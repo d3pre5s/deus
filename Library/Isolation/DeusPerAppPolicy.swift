@@ -43,6 +43,15 @@ public struct DeusPerAppPolicy {
         return manager
     }
 
+    /// Verify the effective on-demand scope after macOS reloads the profile.
+    public static func hasUnconditionalConnect(_ manager: NETunnelProviderManager) -> Bool {
+        guard manager.routingMethod == .sourceApplication, manager.isOnDemandEnabled,
+              let rules = manager.onDemandRules, rules.count == 1,
+              let rule = rules.first as? NEOnDemandRuleConnect else { return false }
+        return rule.interfaceTypeMatch == .any && rule.probeURL == nil &&
+            rule.ssidMatch == nil && rule.dnsSearchDomainMatch == nil && rule.dnsServerAddressMatch == nil
+    }
+
     public func makeAppRules() throws -> [NEAppRule] {
         guard !identities.isEmpty else { throw DeusPolicyError.emptySelection }
         var paths = Set<String>()

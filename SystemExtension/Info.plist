@@ -12,6 +12,8 @@
 		<string>$(APP_GROUP_IDENTIFIER).system.$(MARKETING_VERSION)</string>
 		<key>NEProviderClasses</key>
 		<dict>
+			<key>com.apple.networkextension.filter-data</key>
+			<string>$(PRODUCT_MODULE_NAME).FolderFilterProvider</string>
 			<key>com.apple.networkextension.packet-tunnel</key>
 			<string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
 		</dict>

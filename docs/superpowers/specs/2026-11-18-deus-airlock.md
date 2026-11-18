@@ -4,11 +4,12 @@ Deus Airlock is an independent GPL-3.0-or-later fork of sing-box-for-apple. Its
 network engine is the Deus Airlock fork of sing-box with the Darwin process-UUID
 utun framing fix from our sing-tun fork. Upstream copyright stays intact.
 
-## Product contract
+## MVP contract
 
-- Selected Claude applications and helpers they launch must use the selected
-  VPS or have no network. The same system helper launched by another app
-  must retain that app's normal network policy.
+- Selected Claude applications and their covered helpers use the selected
+  VPS or have no network. Other applications keep their existing access.
+  The same system helper launched outside a selected app retains that app's
+  own policy. Airlock reports which launch paths have been verified.
 - The OS per-app binding must survive closing the UI and stopping or crashing
   the transport. Do not turn loss of connectivity into direct fallback.
 - DNS, IPv4, IPv6, UDP/QUIC, existing connections and new connections are in
@@ -24,13 +25,15 @@ utun framing fix from our sing-tun fork. Upstream copyright stays intact.
 - No green protection claim based only on a running tunnel or saved settings.
   Evidence must match the installed policy, identities, build and OS.
 
-## First release boundary
+## MVP boundary
 
 Airlock builds on the SFM macOS client and a pinned sing-box/Libbox and
-sing-tun pair. It has no runtime dependency on ProxyBridge, LuLu, FreeSnitch
-or FireWally. The product replaces ProxyBridge only for the protected Claude
-workflow. A general-purpose per-program proxy, ProxyBridge rule import,
-machine-wide firewall, and filesystem sandbox are outside this release.
+sing-tun pair. The MVP has one protected routing mode backed by macOS per-app
+VPN and one selected tunnel. Its acceptance does not depend on ProxyBridge,
+LuLu or FireWally applying any policy on its behalf. General per-app proxy
+profiles, a separate outbound firewall, ProxyBridge import and independent
+block rules such as Photoshop stay outside the MVP. Existing firewall
+rules stay in their current apps.
 
 Start with signed macOS applications and their inherited helper scope using
 `NEAppRule.matchTools == nil`. Use `NETunnelProviderManager.forPerAppVPN()`
@@ -59,9 +62,19 @@ gates. Upstream app binaries and packages are not Airlock updates.
    inconclusive, not pass.
 5. Actual Claude launch modes, updates and helper workflows. Qualify only
    tested cases. A proposed profile or unit test does not close this gate.
-6. Back up existing configurations and test rollback before uninstalling
-   redundant software. Unrelated VPNs and remote access stay available.
+6. Confirm the protected app and helpers use the VPS when the tunnel is up,
+   cannot egress directly when it is down, and leave a control app on its
+   ordinary network. Measure without any third-party tool enforcing those
+   results and prepare rollback before changing the live configuration.
 
 The owner's previous pause on live network failure experiments is retained
 until explicitly resumed. Development, source forks, local offline checks
 and preparing reviewable artifacts are authorized now.
+
+## After MVP
+
+The broader product can combine tunnel routing with a general outbound
+firewall and additional per-app routing rules. A macOS content filter is a
+candidate for independent blocks such as Photoshop. Qualify it alongside
+the tunnel and inventory existing app rules before migrating them.
+[Apple deployment requirements](https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment)

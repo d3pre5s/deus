@@ -1,0 +1,45 @@
+#!/usr/bin/python3 -I
+"""Carry the provider's encrypted TCP stream to its one configured peer."""
+import asyncio
+import ipaddress
+import json
+from pathlib import Path
+
+
+async def copy_stream(source, destination):
+    while data := await source.read(65536):
+        destination.write(data)
+        await destination.drain()
+    destination.write_eof()
+
+
+async def main():
+    config = json.loads((Path(__file__).resolve().parent / "peer.json").read_text())
+    server = str(ipaddress.ip_address(config["server"]))
+    port = config["server_port"]
+
+    async def handle(local_reader, local_writer):
+        remote_writer = None
+        pumps = []
+        try:
+            remote_reader, remote_writer = await asyncio.wait_for(asyncio.open_connection(server, port), 10)
+            pumps = [asyncio.create_task(copy_stream(local_reader, remote_writer)),
+                     asyncio.create_task(copy_stream(remote_reader, local_writer))]
+            await asyncio.gather(*pumps)
+        except (OSError, asyncio.TimeoutError):
+            pass
+        finally:
+            for pump in pumps:
+                pump.cancel()
+            await asyncio.gather(*pumps, return_exceptions=True)
+            local_writer.close()
+            if remote_writer:
+                remote_writer.close()
+
+    listener = await asyncio.start_server(handle, "127.0.0.1", config["listen_port"])
+    async with listener:
+        await listener.serve_forever()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

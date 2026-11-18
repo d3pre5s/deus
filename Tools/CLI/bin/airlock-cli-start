@@ -1,0 +1,66 @@
+#!/usr/bin/python3 -I
+"""Start the saved Airlock profile and wait for the macOS connection state."""
+from enum import IntEnum
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+
+class VPNStatus(IntEnum):
+    INVALID = 0
+    DISCONNECTED = 1
+    CONNECTING = 2
+    CONNECTED = 3
+    REASSERTING = 4
+    DISCONNECTING = 5
+
+
+def read_status(command, timeout):
+    output = subprocess.check_output([*command, "status"], text=True, timeout=timeout)
+    prefix = "Acceptance policy present: true; connection status: "
+    status = output.strip().splitlines()[-1:]
+    if not status or not status[0].startswith(prefix):
+        raise RuntimeError("Airlock profile missing or unreadable")
+    try:
+        return VPNStatus(int(status[0][len(prefix):]))
+    except ValueError as error:
+        raise RuntimeError("Unrecognized Airlock connection status") from error
+
+
+def wait_connected(command, start_args, timeout=30):
+    deadline = time.monotonic() + timeout
+    requested = False
+    while (remaining := deadline - time.monotonic()) > 0:
+        status = read_status(command, remaining)
+        if status == VPNStatus.CONNECTED:
+            return
+        if status == VPNStatus.INVALID:
+            raise RuntimeError("macOS reports an invalid Airlock profile")
+        if status == VPNStatus.DISCONNECTED and not requested:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            subprocess.run([*command, "start", *start_args], check=True, timeout=remaining)
+            requested = True
+        time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+    raise RuntimeError("Timed out waiting for the Airlock profile to connect")
+
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    desktop = Path("/Applications/Claude.app")
+    targets = [str(Path.home() / ".local/bin/claude"), str(desktop)]
+    browser_helper = desktop / "Contents/Helpers/chrome-native-host"
+    if browser_helper.is_file():
+        targets.append(str(browser_helper))
+    command = ["/Applications/Deus Airlock.app/Contents/MacOS/Deus Airlock", "--airlock-acceptance"]
+    subprocess.run([*command, "bind", *targets], check=True, timeout=30)
+    wait_connected(command, [str(root / "provider.json"), *targets])
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        sys.exit(f"Airlock: {error}")

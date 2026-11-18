@@ -1,0 +1,5 @@
+# Deus Airlock CLI (scoped to sandboxed children)
+Match exec "/usr/bin/printenv AIRLOCK_CLI_ACTIVE >/dev/null"
+    ProxyCommand "$AIRLOCK_SSH_CONNECT" %h %p
+Host *
+# End Deus Airlock CLI

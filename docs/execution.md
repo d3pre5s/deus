@@ -85,3 +85,85 @@ verified open at the same source branch and head commit after the rename.
   public module pin for arm64 and x86_64. Xcode built the unsigned arm64 app
   with its system and share extensions. No app or profile was installed and
   no live traffic acceptance was attempted.
+
+## 2026-11-18 — signed local qualification
+
+Built the arm64 Release archive with `AIRLOCK_ACCEPTANCE` enabled for the
+standalone host. The local test build omits iCloud containers and multicast.
+The development profiles authorize `packet-tunnel-provider`. The Developer ID
+profiles authorize `packet-tunnel-provider-systemextension`. The installed
+host and provider use the latter value, the same Team ID and App Group, and
+their respective direct distribution profiles. Verified their entitlements and
+the nested signatures after installation. The existing Swift suite passed all
+14 tests.
+
+Used the host's explicit `--airlock-acceptance bind PATH` action with a
+signed test fixture. macOS accepted the per-app configuration. The host loaded
+it again and matched the fixture's path, signing identifier, designated
+requirement and on-demand settings. The `remove` action removed that
+configuration and a separate `status` invocation confirmed its absence.
+
+The first system-extension activation failed with `code signature invalid`.
+Gatekeeper reported `Unnotarized Developer ID`. A standalone VLESS transport
+probe reached the expected exit through the configured VPS. Claude Desktop,
+Claude Code, spawned helpers and tunnel-loss enforcement still require a live
+run with the activated Airlock provider.
+
+### Notarized build and traffic results
+
+Apple accepted the submitted archive. Xcode exported a stapled Developer ID
+build. The installed copy passed strict nested signature verification, ticket
+validation and Gatekeeper assessment. macOS activated the system extension.
+
+**Isolation failed for a directly launched Claude Code CLI.** With its exact
+rule loaded and the tunnel connected, the CLI sent packets over the physical
+interface. Its child curl returned the ordinary public IPv4 address. During a
+40-second suspension of the Airlock provider, curl still returned that address,
+SSH received a server banner, and Git read the HEAD of a public repository.
+Packet metadata linked the CLI, curl, SSH and Git's HTTPS helper to the
+physical interface during suspension.
+
+A separate selected fixture launched through Launch Services reached the
+expected VPS exit before and after suspension and received no response during
+suspension. The same fixture launched as a standalone executable exhibited
+the CLI bypass. Desktop helper DNS packets appeared on the tunnel interface.
+End-to-end Desktop traffic, IPv6, and a separate upstream-only failure remain
+unverified. The temporary acceptance policy was removed and its absence
+confirmed. The notarized extension remains enabled. An active tunnel or a
+successful policy readback must not be presented as proof of CLI protection.
+
+### Terminal launcher acceptance
+
+The local terminal launcher now enforces a loopback-only socket policy for
+the real CLI and its descendants. The provider terminates the authenticated
+local TLS proxy and connects through a fixed-peer, user-level TCP relay.
+Testing through the ordinary command in a new zsh confirmed the expected VPS
+exit, an API response, SSH transport and a public Git HEAD. Unloading the
+relay closed an established SSH channel and prevented all four probes from
+reaching their destinations. The outside control stayed online. All four
+probes recovered after reloading the relay. Raw IPv4 UDP and IPv6 TCP/UDP
+attempts from inside returned EPERM across the three phases. This result
+applies to the launcher path. See [terminal isolation](../Tools/CLI/README.md).
+
+### Native Claude Desktop binding, 2026-11-19
+
+The signed acceptance host now extends a matching existing policy in place.
+It checks the prior identities and on-demand settings before saving, then reloads
+the policy. The CLI startup command supplies both the vendor CLI and
+`/Applications/Claude.app` when binding and starting the stored profile.
+
+On the development Mac, the new Xcode archive and the installed notarized host
+both read back two exact rules. The provider reported connected after the save.
+The local CLI inheritance regression passed. Opening the native Claude app
+produced established connections from Claude and Claude Helper on utun4, whose
+IPv4 address matched the Airlock TUN profile. The extension and installed host
+binary were unchanged. These observations establish a binding and sampled GUI
+traffic. A local Code-session probe is required for egress IP and outage results.
+
+The user confirmed that Claude Desktop opened and that the Code tab required
+a paid subscription. No local Code session started. In a relay interruption
+with Desktop open, the gateway probe reported the expected Spanish exit, then
+no network, then the expected exit again. A separate Mac probe stayed online
+with a different exit. Sampled Desktop TCP sockets on utun4 disappeared at
+interruption. The early recovery sample had no Desktop socket; only gateway
+recovery was confirmed. The relay was restored and both rules were read back.

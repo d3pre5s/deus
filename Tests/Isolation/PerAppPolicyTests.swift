@@ -72,6 +72,23 @@ final class PerAppPolicyTests: XCTestCase {
         XCTAssertFalse(configuration.includeAllNetworks)
     }
 
+    func testReadbackRejectsNetworkSpecificConnectRules() throws {
+        let candidate = try DeusPerAppPolicy(identities: [identity])
+            .makeCandidate(providerBundleIdentifier: "io.github.d3pre5s.deusairlock.system")
+        XCTAssertTrue(DeusPerAppPolicy.hasUnconditionalConnect(candidate))
+        let restrictions: [(NEOnDemandRuleConnect) -> Void] = [
+            { $0.ssidMatch = ["Example"] },
+            { $0.dnsSearchDomainMatch = ["example.com"] },
+            { $0.dnsServerAddressMatch = ["192.0.2.1"] },
+        ]
+        for restrict in restrictions {
+            let rule = NEOnDemandRuleConnect()
+            restrict(rule)
+            candidate.onDemandRules = [rule]
+            XCTAssertFalse(DeusPerAppPolicy.hasUnconditionalConnect(candidate))
+        }
+    }
+
     func testCandidateRejectsEmptyProviderBeforePreferences() {
         XCTAssertThrowsError(try DeusPerAppPolicy(identities: [identity]).makeCandidate(providerBundleIdentifier: ""))
     }

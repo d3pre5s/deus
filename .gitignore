@@ -21,3 +21,11 @@ AGENTS.md
 *.p12
 *.mobileprovision
 *.provisionprofile
+
+# Local Airlock transport credentials and installation backups
+/Tools/CLI/client.json
+/Tools/CLI/provider.json
+/Tools/CLI/peer.json
+/Tools/CLI/before-install/
+/Tools/CLI/.curlrc
+__pycache__/

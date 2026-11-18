@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/ssh -o 'ProxyCommand="$AIRLOCK_SSH_CONNECT" %h %p' "$@"

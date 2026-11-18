@@ -664,6 +664,7 @@
 		3ADDCFC12E8B72B0009ACE1D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				FolderFilterProvider.swift,
 				main.swift,
 				PacketTunnelProvider.swift,
 			);
@@ -2971,7 +2972,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_PACKAGE_IDENTIFIER = io.github.d3pre5s.deusairlock;
 				DEUS_URL_SCHEME = "deus-airlock";
-				DEUS_AIRLOCK_BUILD = 10;
+				DEUS_AIRLOCK_BUILD = 12;
 				DEUS_AIRLOCK_VERSION = 1.14.4;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -3044,7 +3045,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_PACKAGE_IDENTIFIER = io.github.d3pre5s.deusairlock;
 				DEUS_URL_SCHEME = "deus-airlock";
-				DEUS_AIRLOCK_BUILD = 10;
+				DEUS_AIRLOCK_BUILD = 12;
 				DEUS_AIRLOCK_VERSION = 1.14.4;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -3366,6 +3367,7 @@
 			buildSettings = {
 				APP_GROUP_IDENTIFIER = "$(TeamIdentifierPrefix)$(BASE_PACKAGE_IDENTIFIER)";
 				CODE_SIGN_ENTITLEMENTS = SystemExtension/SystemExtension.entitlements;
+				OTHER_LDFLAGS = "$(inherited) -lbsm";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
@@ -3414,6 +3416,7 @@
 			buildSettings = {
 				APP_GROUP_IDENTIFIER = "$(TeamIdentifierPrefix)$(BASE_PACKAGE_IDENTIFIER)";
 				CODE_SIGN_ENTITLEMENTS = SystemExtension/SystemExtension.entitlements;
+				OTHER_LDFLAGS = "$(inherited) -lbsm";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;

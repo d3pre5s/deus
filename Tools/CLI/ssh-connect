@@ -1,0 +1,86 @@
+#!/usr/bin/python3 -I
+"""OpenSSH ProxyCommand for the authenticated TLS proxy in the Airlock provider."""
+import asyncio
+import base64
+import contextlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import ssl
+import sys
+
+
+def validate_response(response):
+    line = response.partition(b"\r\n")[0]
+    match = re.fullmatch(rb"HTTP/1\.[01] ([0-9]{3})(?: [^\r\n]*)?", line)
+    if not match:
+        raise OSError("invalid HTTP proxy response")
+    if match[1] != b"200":
+        raise OSError("proxy status " + match[1].decode("ascii"))
+
+
+async def connect(host, port):
+    if ":" in host:
+        host = "[" + str(ipaddress.IPv6Address(host)) + "]"
+    elif not re.fullmatch(r"[a-zA-Z0-9._-]+", host):
+        raise ValueError("Invalid SSH destination")
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid SSH port")
+    root = Path(__file__).resolve().parent
+    c = json.loads((root / "client.json").read_text())
+    ctx = ssl.create_default_context(cafile=str(root / "proxy.crt"))
+    try:
+        rx, tx = await asyncio.wait_for(asyncio.open_connection(
+            "127.0.0.1", c["port"], ssl=ctx, server_hostname="127.0.0.1"), 10)
+    except ConnectionRefusedError as error:
+        raise OSError("proxy connection refused") from error
+    try:
+        await forward(rx, tx, host, port, c["password"])
+    finally:
+        tx.close()
+        with contextlib.suppress(OSError, asyncio.TimeoutError):
+            await asyncio.wait_for(tx.wait_closed(), 2)
+
+
+async def forward(rx, tx, host, port, password):
+    auth = base64.b64encode(("airlock:" + password).encode()).decode()
+    dest = f"{host}:{port}"
+    tx.write(f"CONNECT {dest} HTTP/1.1\r\nHost: {dest}\r\nProxy-Authorization: Basic {auth}\r\n\r\n".encode())
+    await tx.drain()
+    response = await asyncio.wait_for(rx.readuntil(b"\r\n\r\n"), 15)
+    validate_response(response)
+    local = asyncio.StreamReader()
+    transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(local), sys.stdin.buffer)
+
+    async def send():
+        while data := await local.read(65536):
+            tx.write(data)
+            await tx.drain()
+
+    async def receive():
+        while data := await rx.read(65536):
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+        if os.environ.get("AIRLOCK_SSH_PROBE") == "1":
+            print("Airlock SSH: remote stream closed", file=sys.stderr, flush=True)
+
+    jobs = [asyncio.create_task(send()), asyncio.create_task(receive())]
+    try:
+        done, _ = await asyncio.wait(jobs, return_when=asyncio.FIRST_COMPLETED)
+        for job in done:
+            job.result()
+    finally:
+        for job in jobs:
+            job.cancel()
+        await asyncio.gather(*jobs, return_exceptions=True)
+        transport.close()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(connect(sys.argv[1], int(sys.argv[2])))
+    except (OSError, ValueError, IndexError, asyncio.LimitOverrunError, asyncio.IncompleteReadError, asyncio.TimeoutError) as error:
+        sys.exit(f"Airlock SSH: {error}")

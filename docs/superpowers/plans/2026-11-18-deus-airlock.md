@@ -70,18 +70,23 @@ Files: `Library/Isolation/`, `Tests/Isolation/`, `Tools/`.
   configuration APIs; no automatic application on launch.
 - [ ] Prepare probes and a reversible installation plan. Only after runtime
   qualification connect it to the normal app lifecycle and protected status.
-- [ ] Execute acceptance gates 3–5 after live testing is resumed. If denied
+- [ ] Execute acceptance gates 3–6 after live testing is resumed. If denied
   by macOS, record the actual error and investigate a supported deployment.
 
-## Task 4 — strict policy and migration
+## Task 4 — strict per-app tunnel policy
 
 - [ ] Add strict single-server config generation/validation with tests for
   DNS direct fallback, unsupported transport and control listeners.
 - [ ] Implement inventory/update handling and retained policy on disconnect
   only against the qualified backend; test failures before happy paths.
+- [ ] Verify the protected routing and kill switch without ProxyBridge or
+  an external firewall in the enforcement path. Confirm an ordinary control
+  app retains its network in the same run.
 - [ ] Reuse existing SFM UI for coverage and diagnostics; perform rendered
   verification and independent review before calling the UI complete.
 - [ ] Review the whole branch, resolve findings, repeat affected checks.
-- [ ] Prepare actual uninstall/rollback steps after replacement acceptance.
+
+General outbound blocks (including Photoshop), ProxyBridge profile and rule
+migration, and additional per-app proxy modes are outside this MVP plan.
 
 Progress and actual evidence live in [execution.md](../../execution.md).
