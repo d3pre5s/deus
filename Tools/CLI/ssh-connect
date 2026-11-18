@@ -57,11 +57,20 @@ async def forward(rx, tx, host, port, password):
 
     async def send():
         while data := await local.read(65536):
-            tx.write(data)
-            await tx.drain()
+            try:
+                tx.write(data)
+                await tx.drain()
+            except (ConnectionResetError, BrokenPipeError) as error:
+                raise OSError("proxy stream reset after CONNECT") from error
 
     async def receive():
-        while data := await rx.read(65536):
+        while True:
+            try:
+                data = await rx.read(65536)
+            except (ConnectionResetError, BrokenPipeError) as error:
+                raise OSError("proxy stream reset after CONNECT") from error
+            if not data:
+                break
             sys.stdout.buffer.write(data)
             sys.stdout.buffer.flush()
         if os.environ.get("AIRLOCK_SSH_PROBE") == "1":

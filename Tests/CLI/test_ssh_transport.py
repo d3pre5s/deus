@@ -34,6 +34,8 @@ class SSHOutageEvidence(unittest.TestCase):
             ("Airlock SSH: proxy status 502", True),
             ("Airlock SSH: proxy connection refused", True),
             ("Airlock SSH: remote stream closed", True),
+            ("Airlock SSH: proxy stream reset after CONNECT", True),
+            ("Airlock SSH: [Errno 32] Broken pipe", False),
         ]
         for diagnostic, outage in cases:
             with self.subTest(diagnostic=diagnostic), patch.object(

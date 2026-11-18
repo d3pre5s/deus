@@ -27,8 +27,22 @@ NO_NET = "Нет сети"
 ERROR = "Ошибка проверки"
 
 
+def outage_proxy_port():
+    if os.environ.get("AIRLOCK_CHECK_OUTAGE") != "1":
+        return None
+    proxy = urlsplit(os.environ.get("HTTPS_PROXY", ""))
+    return proxy.port if (proxy.scheme, proxy.hostname) == ("https", "127.0.0.1") else None
+
+
 def trace(argv, url=TRACE):
-    code, out, _ = run([*argv, "-fsS", "--max-time", "9", url])
+    port = outage_proxy_port()
+    metrics = ["--write-out", "\\nairlock %{remote_ip} %{remote_port} %{http_connect} %{proxy_ssl_verify_result}"] if port else []
+    code, out, err = run([*argv, "-fsS", "--max-time", "9", *metrics, url])
+    # A generic TLS failure remains inconclusive. During a known relay outage,
+    # verify the expected local TLS proxy and successful CONNECT before EOF/reset.
+    if (port and code == 35 and out.strip() == f"airlock 127.0.0.1 {port} 200 0"
+            and any(s in err.lower() for s in ("ssl_error_syscall", "reset by peer", "unexpected eof"))):
+        return NO_NET
     if code in (5, 6, 7, 28, 52, 55, 56):
         return NO_NET
     if code:
@@ -52,6 +66,7 @@ def ssh(binary):
     transport_errors = {
         "Airlock SSH: proxy connection refused",
         "Airlock SSH: remote stream closed",
+        "Airlock SSH: proxy stream reset after CONNECT",
         "Airlock SSH: proxy status 502",
         "Airlock SSH: proxy status 503",
         "Airlock SSH: proxy status 504",
@@ -62,11 +77,23 @@ def ssh(binary):
 
 
 def git():
+    port = outage_proxy_port()
+    env = os.environ.copy()
+    if port:
+        env.update(GIT_TRACE_CURL="1", GIT_TRACE_CURL_NO_DATA="1", GIT_TRACE_REDACT="1")
     code, out, err = run(["/usr/bin/git", "-c", "credential.helper=", "ls-remote",
-                          "https://github.com/d3pre5s/deus-airlock.git", "HEAD"])
+                          "https://github.com/d3pre5s/deus-airlock.git", "HEAD"], env=env)
     if not code and re.fullmatch(r"[0-9a-f]{40,64}\s+HEAD\s*", out):
         return "HEAD"
-    if code == 128 and any(s in err.lower() for s in
+    diagnostics = err.lower()
+    if (port and code == 128 and f"trying 127.0.0.1:{port}" in diagnostics
+            and "connected to 127.0.0.1" in diagnostics
+            and "connect tunnel established, response 200" in diagnostics
+            and any(s in diagnostics for s in ("reset by peer", "unexpected eof"))):
+        return NO_NET
+    # Trace output can mention other failures before the final Git diagnostic.
+    final_error = "\n".join(line for line in diagnostics.splitlines() if line.startswith("fatal:")) if port else diagnostics
+    if code == 128 and any(s in final_error for s in
         ("timed out", "connection reset", "connection refused", "failed to connect")):
         return NO_NET
     return f"{ERROR} (git {code})"

@@ -53,7 +53,7 @@ def check_hook(entry, argv, env, work):
 def api(env, work):
     code, out, err = run([*ENTRY, "--bare", "-p", "ping", "--tools", "",
                           "--no-session-persistence", "--setting-sources", ""],
-                         timeout=22, env=env, cwd=work)
+                         timeout=22, env=dict(env, CLAUDE_CODE_MAX_RETRIES="0"), cwd=work)
     if code == 124:
         return f"{ERROR} (тайм-аут процесса Claude)"
     if "invalid api key" in (out + err).lower():
@@ -77,6 +77,8 @@ def phase(work, fixture, url, offline, expected):
     result_file = work / "hook.json"
     result_file.unlink(missing_ok=True)
     env = environment(work)
+    if offline:
+        env["AIRLOCK_CHECK_OUTAGE"] = "1"
     with ThreadPoolExecutor(max_workers=2) as pool:
         api_result = pool.submit(api, env, work)
         check_hook(ENTRY, ["/usr/bin/python3", PROBE, work, fixture, url], env, work)
