@@ -1,4 +1,5 @@
 #include "Airlock.xcconfig"
+DEUS_DEVELOPMENT_TEAM = $(AIRLOCK_TEAM_ID)
 CODE_SIGN_STYLE = Automatic
 CODE_SIGN_IDENTITY = Apple Development
 CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development

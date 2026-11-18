@@ -100,7 +100,7 @@ xcodebuild archive -project sing-box.xcodeproj -scheme "Deus Airlock" \
   -archivePath "$PWD/build/Airlock.xcarchive" \
   -xcconfig Configuration/Qualification.xcconfig \
   -onlyUsePackageVersionsFromResolvedFile ARCHS=arm64 \
-  DEUS_DEVELOPMENT_TEAM="$AIRLOCK_TEAM_ID"
+  AIRLOCK_TEAM_ID="$AIRLOCK_TEAM_ID"
 ```
 
 This creates the Apple Development archive for local qualification. Developer
