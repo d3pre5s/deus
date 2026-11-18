@@ -6,13 +6,15 @@
 	<string>$(BASE_PACKAGE_IDENTIFIER)</string>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_IDENTIFIER)</string>
+	<key>AppURLScheme</key>
+	<string>$(DEUS_URL_SCHEME)</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleTypeIconFile</key>
 			<string>AppIcon.icns</string>
 			<key>CFBundleTypeName</key>
-			<string>sing-box Profile</string>
+			<string>Deus Airlock Profile</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -31,10 +33,10 @@
 			<key>CFBundleURLIconFile</key>
 			<string>AppIcon.icns</string>
 			<key>CFBundleURLName</key>
-			<string>sing-box</string>
+			<string>Deus Airlock</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>sing-box</string>
+				<string>$(DEUS_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
@@ -42,12 +44,12 @@
 	<false/>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.io.nekohasekai.sfamt</key>
+		<key>iCloud.$(BASE_PACKAGE_IDENTIFIER)</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
 			<key>NSUbiquitousContainerName</key>
-			<string>sing-box</string>
+			<string>Deus Airlock</string>
 			<key>NSUbiquitousContainerSupportedFolderLevels</key>
 			<string>Any</string>
 		</dict>
@@ -62,7 +64,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>sing-box Profile</string>
+			<string>Deus Airlock Profile</string>
 			<key>UTTypeIconFiles</key>
 			<array/>
 			<key>UTTypeIdentifier</key>
@@ -86,7 +88,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>sing-box Profile</string>
+			<string>Deus Airlock Profile</string>
 			<key>UTTypeIconFiles</key>
 			<array>
 				<string>AppIcon.icns</string>
@@ -113,16 +115,16 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>As a universal proxy platform, sing-box configures routing according to your configuration.</string>
+	<string>Deus Airlock needs local network access when a selected tunnel profile connects to a server on your local network.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access is required to scan QR codes for importing profiles.</string>
 	<key>NSLocationUsageDescription</key>
-	<string>sing-box uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
+	<string>Deus Airlock uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>sing-box uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
+	<string>Deus Airlock uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>sing-box uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
+	<string>Deus Airlock uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>sing-box uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
+	<string>Deus Airlock uses the Location permission to provide users with routing based on WIFI SSID and BSSID rules, without reading your location.</string>
 </dict>
 </plist>

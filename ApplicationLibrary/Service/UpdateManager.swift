@@ -34,6 +34,7 @@
 
         @discardableResult
         public func loadCachedUpdate() async -> Bool {
+            guard !AppConfiguration.isAirlock else { return false }
             let cached = await SharedPreferences.cachedUpdateInfo.get()
             guard !cached.isEmpty,
                   let data = cached.data(using: .utf8),
@@ -81,7 +82,7 @@
         }
 
         public func downloadAndInstall(environments: ExtensionEnvironments) async {
-            guard let updateInfo else { return }
+            guard !AppConfiguration.isAirlock, let updateInfo else { return }
 
             isDownloading = true
             isInstalling = false
@@ -155,6 +156,7 @@
         }
 
         func refreshUpdateInfo(force: Bool = false, showsAlertOnFailure: Bool = true) async throws -> UpdateInfo? {
+            guard !AppConfiguration.isAirlock else { return nil }
             guard !isChecking else {
                 throw CancellationError()
             }

@@ -1,5 +1,4 @@
 import Foundation
-import Libbox
 import Library
 import QRCode
 import SwiftUI
@@ -28,7 +27,7 @@ public struct QRCodeContentView: View {
         VStack {
             Spacer()
             ExternalQRCodeView(
-                content: LibboxGenerateRemoteProfileImportLink(profileName, remoteURL),
+                content: Profile.remoteImportLink(name: profileName, remoteURL: remoteURL).absoluteString,
                 foregroundColor: .labelColor,
                 backgroundColor: CGColor(gray: 1.0, alpha: 0.0)
             )

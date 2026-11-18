@@ -14,3 +14,10 @@ AGENTS.md
 /fastlane/test_output/
 /fastlane/.bundle/
 /fastlane/.cache/
+/.build/
+/.swiftpm/
+/Configuration/Local.xcconfig
+/Configuration/Export.local.plist
+*.p12
+*.mobileprovision
+*.provisionprofile

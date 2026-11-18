@@ -147,7 +147,9 @@ final class ShareViewModel: ObservableObject {
 
     #if os(macOS)
         func openApplication() {
-            NSWorkspace.shared.open(URL(string: "sing-box://taildrop")!)
+            if let url = AppLinks.replacingScheme(in: URL(string: "sing-box://taildrop")!, with: AppConfiguration.urlScheme) {
+                NSWorkspace.shared.open(url)
+            }
             cancel()
         }
     #endif

@@ -1,0 +1,11 @@
+// Pass with xcodebuild -xcconfig Configuration/Airlock.xcconfig.
+// Local.xcconfig is intentionally ignored. Never store signing keys here.
+DEUS_DEVELOPMENT_TEAM =
+DEUS_APP_PROFILE =
+DEUS_EXTENSION_PROFILE =
+
+#include? "Local.xcconfig"
+
+BASE_PACKAGE_IDENTIFIER = io.github.d3pre5s.deusairlock
+DEVELOPMENT_TEAM = $(DEUS_DEVELOPMENT_TEAM)
+DEVELOPMENT_TEAM[sdk=macosx*] = $(DEUS_DEVELOPMENT_TEAM)

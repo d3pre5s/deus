@@ -1,6 +1,14 @@
 import Foundation
 
 public enum AppConfiguration {
+    public static var isAirlock: Bool {
+        Bundle.main.bundleIdentifier == "io.github.d3pre5s.deusairlock.standalone"
+    }
+
+    public static var urlScheme: String {
+        Bundle.main.object(forInfoDictionaryKey: "AppURLScheme") as? String ?? "sing-box"
+    }
+
     public static let packageName: String = {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "BasePackageIdentifier") as? String else {
             fatalError("Missing BasePackageIdentifier in Info.plist")

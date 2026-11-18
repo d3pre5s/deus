@@ -10,10 +10,10 @@
 	<true/>
 	<key>provisioningProfiles</key>
 	<dict>
-		<key>io.nekohasekai.sfamt.standalone</key>
-		<string>XC io nekohasekai sfamt standalone</string>
-		<key>io.nekohasekai.sfamt.system</key>
-		<string>XC io nekohasekai sfamt system</string>
+		<key>io.github.d3pre5s.deusairlock.standalone</key>
+		<string>YOUR_DEUS_APP_PROFILE</string>
+		<key>io.github.d3pre5s.deusairlock.system</key>
+		<string>YOUR_DEUS_EXTENSION_PROFILE</string>
 	</dict>
 </dict>
 </plist>
