@@ -88,3 +88,21 @@ alone is insufficient. Do not put `.p12`, provisioning files, credentials or
 real server configurations in this public fork. Verify nested signatures,
 provisioning entitlements, timestamp/hardened runtime and notarization before
 distribution. Only then proceed to the separate live acceptance plan.
+
+### Local qualification archive
+
+After building Libbox above, use the dedicated qualification entitlements and
+the developer team that owns the app and system extension identifiers:
+
+```sh
+xcodebuild archive -project sing-box.xcodeproj -scheme "Deus Airlock" \
+  -configuration Release -destination 'generic/platform=macOS' \
+  -archivePath "$PWD/build/Airlock.xcarchive" \
+  -xcconfig Configuration/Qualification.xcconfig \
+  -onlyUsePackageVersionsFromResolvedFile ARCHS=arm64 \
+  DEUS_DEVELOPMENT_TEAM="$AIRLOCK_TEAM_ID"
+```
+
+This creates the Apple Development archive for local qualification. Developer
+ID signing, direct-distribution profiles, notarization and ticket validation
+are still required before installing the distribution build.
