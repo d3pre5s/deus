@@ -230,3 +230,22 @@ At this checkpoint the Mac was running build 12. Its signed, notarized
 rollback copy was verified before deployment. The Apple submission was held
 for confirmation. The live GUI Stop/Start and the server-side Spain outage
 had no build-13 result at this point.
+
+### Spain route interruption on installed build 12, 2026-11-20
+
+The operator coordinated a loss of the VPS route to the home network in
+Spain. The owner confirmed restoration. A real Claude Code Setup hook on
+the installed 1.14.4 (12) sampled HTTPS through the terminal launcher. It
+compared the observed exit with the previously recorded home IPv4 and ES
+country code. The local Airlock relay accepted a connection after recovery.
+
+| Client observation | Result |
+| --- | --- |
+| Before interruption | 14 fresh requests returned the expected home exit. A second curl process repeatedly received HTTP 200 on one connection. |
+| During interruption | 35 fresh requests received a transport failure through the TLS-verified local proxy. From the first to the last refusal, all 37 independent checks reached both the configured VPS TCP port and the trace service via the ordinary Mac connection. |
+| After restoration | The first fresh home response arrived 160 seconds after the first refusal. All 10 recovery requests matched the same home exit. The second curl process resumed HTTP 200 on a new connection. A separate SSH probe received the public server banner. |
+
+No sampled protected response reported an alternate exit. These observations
+cover the client HTTPS path on build 12. Verifying the VPS rule for ordinary
+WAN egress still requires server-side counters or a scoped capture. Build 13
+GUI Stop/Start and per-app and On Demand readback remain separate.
