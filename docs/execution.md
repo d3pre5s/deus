@@ -249,3 +249,27 @@ No sampled protected response reported an alternate exit. These observations
 cover the client HTTPS path on build 12. Verifying the VPS rule for ordinary
 WAN egress still requires server-side counters or a scoped capture. Build 13
 GUI Stop/Start and per-app and On Demand readback remain separate.
+
+### Installed build 13 GUI Stop/Start, 2026-11-20
+
+Apple notarized the Developer ID archive built from `1ff171a`. The local
+installation passed stapled-ticket and Gatekeeper checks. macOS activated
+the matching 1.14.4 (13) system extension without requiring a new approval.
+The terminal migration read back the same three selected executable
+identities, and the first successful start populated the profile snapshot.
+
+The owner clicked Stop and then Start in the macOS toolbar. The signed
+host read the saved policy from macOS in three distinct states.
+
+| Checkpoint | Tunnel | Exact per-app rules | On Demand |
+| --- | --- | ---: | --- |
+| Before Stop | Connected | 3 | Enabled, unconditional Connect |
+| After Stop | Disconnected | 3 | Enabled, unconditional Connect |
+| After Start | Connected | 3 | Enabled, unconditional Connect |
+
+The paths and signing requirements matched at all three checkpoints. After
+Start, the protected terminal launcher reached the expected Spanish exit,
+read Git HEAD, received SSH banners in both tests, and got the expected API
+response to an invalid test key. This run covers the installed GUI cycle
+and normal terminal connectivity. Lifecycle, outage and Desktop gates are
+tracked separately.
