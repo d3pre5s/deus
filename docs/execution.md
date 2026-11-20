@@ -273,3 +273,27 @@ read Git HEAD, received SSH banners in both tests, and got the expected API
 response to an invalid test key. This run covers the installed GUI cycle
 and normal terminal connectivity. Lifecycle, outage and Desktop gates are
 tracked separately.
+
+### Local relay loss on installed build 13, 2026-11-20
+
+The check stopped only the user LaunchAgent for the local Airlock relay.
+It observed the real terminal Claude Code launcher and its descendants on
+1.14.4 (13), with a separate Mac process as a control. The signed host
+reported the VPN connected while the relay port was unavailable.
+
+- Before the interruption, curl and a new helper executed by the protected
+  shell reported the expected IPv4 and country code. SSH banners and Git
+  HEAD were reachable. A second SSH stream had already received its banner.
+- During the interruption, the established SSH stream reached EOF. Fresh
+  HTTPS, SSH and Git requests in the protected tree failed. The kernel
+  denied direct IPv4 and IPv6 TCP and UDP socket probes in the protected
+  tree. The independent Mac control could still reach the internet via a
+  distinct exit.
+- The relay returned after 6.7 seconds. Protected requests recovered on the
+  same Spanish exit. The signed host read back the original three exact
+  per-app rules and unconditional On Demand, with the same policy digest
+  as after GUI Start.
+
+These results cover the terminal launch path and the probes above. DNS
+and interface-level leakage still need packet evidence. Claude Desktop and
+independent executables have separate acceptance cases.
