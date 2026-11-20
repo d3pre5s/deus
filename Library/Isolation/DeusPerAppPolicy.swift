@@ -29,6 +29,8 @@ public struct DeusPerAppPolicy {
         let configuration = NETunnelProviderProtocol()
         configuration.providerBundleIdentifier = providerBundleIdentifier
         configuration.serverAddress = "Deus Airlock"
+        configuration.providerConfiguration = [AirlockProfile.markerKey: AirlockProfile.policyID]
+        TunnelSnapshot.identify(configuration)
         // Scope comes from per-app rules. Do not take over other applications.
         configuration.includeAllNetworks = false
         manager.protocolConfiguration = configuration
@@ -44,8 +46,8 @@ public struct DeusPerAppPolicy {
     }
 
     /// Verify the effective on-demand scope after macOS reloads the profile.
-    public static func hasUnconditionalConnect(_ manager: NETunnelProviderManager) -> Bool {
-        guard manager.routingMethod == .sourceApplication, manager.isOnDemandEnabled,
+    public static func hasUnconditionalConnect(_ manager: NETunnelProviderManager, allowDisabled: Bool = false) -> Bool {
+        guard manager.routingMethod == .sourceApplication, manager.isOnDemandEnabled || allowDisabled,
               let rules = manager.onDemandRules, rules.count == 1,
               let rule = rules.first as? NEOnDemandRuleConnect else { return false }
         return rule.interfaceTypeMatch == .any && rule.probeURL == nil &&

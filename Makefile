@@ -75,14 +75,17 @@ archive_macos_standalone: archive_macos_standalone_apple archive_macos_standalon
 export_macos_standalone_apple:
 	rm -rf build/Airlock-arm64
 	xcodebuild -exportArchive -archivePath build/Airlock-arm64.xcarchive -exportOptionsPlist "$(DEUS_EXPORT_OPTIONS)" -exportPath build/Airlock-arm64
+	bash Tools/bundle-airlock-cli.sh verify "build/Airlock-arm64/Deus Airlock.app/Contents/Resources/AirlockCLI"
 
 export_macos_standalone_intel:
 	rm -rf build/Airlock-x86_64
 	xcodebuild -exportArchive -archivePath build/Airlock-x86_64.xcarchive -exportOptionsPlist "$(DEUS_EXPORT_OPTIONS)" -exportPath build/Airlock-x86_64
+	bash Tools/bundle-airlock-cli.sh verify "build/Airlock-x86_64/Deus Airlock.app/Contents/Resources/AirlockCLI"
 
 export_macos_standalone_universal:
 	rm -rf build/Airlock-universal
 	xcodebuild -exportArchive -archivePath build/Airlock-universal.xcarchive -exportOptionsPlist "$(DEUS_EXPORT_OPTIONS)" -exportPath build/Airlock-universal
+	bash Tools/bundle-airlock-cli.sh verify "build/Airlock-universal/Deus Airlock.app/Contents/Resources/AirlockCLI"
 
 # DMG commands
 build_macos_dmg_apple: archive_macos_standalone_apple export_macos_standalone_apple
@@ -147,13 +150,7 @@ build_macos_pkg_apple: archive_macos_standalone_apple export_macos_standalone_ap
 	rm -rf build/pkgroot-arm64
 	mkdir -p build/pkgroot-arm64
 	ditto "build/Airlock-arm64/Deus Airlock.app" "build/pkgroot-arm64/Deus Airlock.app"
-	pkgbuild --root "build/pkgroot-arm64" \
-		--component-plist SFM.System/component.plist \
-		--identifier io.github.d3pre5s.deusairlock.standalone \
-		--install-location /Applications \
-		--min-os-version 13.0 \
-		--compression latest \
-		build/component-arm64.pkg
+	bash Tools/build-airlock-component.sh "build/pkgroot-arm64" build/component-arm64.pkg
 	productbuild --distribution SFM.System/distribution-arm64.xml \
 		--package-path build \
 		--resources SFM.System/Resources \
@@ -167,13 +164,7 @@ build_macos_pkg_intel: archive_macos_standalone_intel export_macos_standalone_in
 	rm -rf build/pkgroot-x86_64
 	mkdir -p build/pkgroot-x86_64
 	ditto "build/Airlock-x86_64/Deus Airlock.app" "build/pkgroot-x86_64/Deus Airlock.app"
-	pkgbuild --root "build/pkgroot-x86_64" \
-		--component-plist SFM.System/component.plist \
-		--identifier io.github.d3pre5s.deusairlock.standalone \
-		--install-location /Applications \
-		--min-os-version 13.0 \
-		--compression latest \
-		build/component-x86_64.pkg
+	bash Tools/build-airlock-component.sh "build/pkgroot-x86_64" build/component-x86_64.pkg
 	productbuild --distribution SFM.System/distribution-x86_64.xml \
 		--package-path build \
 		--resources SFM.System/Resources \
@@ -187,13 +178,7 @@ build_macos_pkg_universal: archive_macos_standalone_universal export_macos_stand
 	rm -rf build/pkgroot-universal
 	mkdir -p build/pkgroot-universal
 	ditto "build/Airlock-universal/Deus Airlock.app" "build/pkgroot-universal/Deus Airlock.app"
-	pkgbuild --root "build/pkgroot-universal" \
-		--component-plist SFM.System/component.plist \
-		--identifier io.github.d3pre5s.deusairlock.standalone \
-		--install-location /Applications \
-		--min-os-version 13.0 \
-		--compression latest \
-		build/component-universal.pkg
+	bash Tools/build-airlock-component.sh "build/pkgroot-universal" build/component-universal.pkg
 	productbuild --distribution SFM.System/distribution-universal.xml \
 		--package-path build \
 		--resources SFM.System/Resources \

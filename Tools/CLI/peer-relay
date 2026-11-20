@@ -1,9 +1,12 @@
 #!/usr/bin/python3 -I
 """Carry the provider's encrypted TCP stream to its one configured peer."""
+import argparse
 import asyncio
+import hashlib
 import ipaddress
 import json
 from pathlib import Path
+import sys
 
 
 async def copy_stream(source, destination):
@@ -13,8 +16,11 @@ async def copy_stream(source, destination):
     destination.write_eof()
 
 
-async def main():
-    config = json.loads((Path(__file__).resolve().parent / "peer.json").read_text())
+async def main(peer_sha256):
+    data = (Path(__file__).resolve().parent / "peer.json").read_bytes()
+    if peer_sha256 is not None and hashlib.sha256(data).hexdigest() != peer_sha256:
+        sys.exit("Airlock relay: peer.json changed; provision the selected peer again")
+    config = json.loads(data)
     server = str(ipaddress.ip_address(config["server"]))
     port = config["server_port"]
 
@@ -42,4 +48,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--peer-sha256", help="peer fingerprint set by explicit terminal provisioning")
+    asyncio.run(main(parser.parse_args().peer_sha256))

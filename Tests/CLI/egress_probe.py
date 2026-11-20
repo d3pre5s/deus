@@ -30,21 +30,29 @@ ERROR = "Ошибка проверки"
 def outage_proxy_port():
     if os.environ.get("AIRLOCK_CHECK_OUTAGE") != "1":
         return None
-    proxy = urlsplit(os.environ.get("HTTPS_PROXY", ""))
-    return proxy.port if (proxy.scheme, proxy.hostname) == ("https", "127.0.0.1") else None
+    try:
+        proxy = urlsplit(os.environ.get("HTTPS_PROXY", ""))
+        return proxy.port if (proxy.scheme, proxy.hostname) == ("https", "127.0.0.1") else None
+    except ValueError:
+        return None
 
 
 def trace(argv, url=TRACE):
     port = outage_proxy_port()
-    metrics = ["--write-out", "\\nairlock %{remote_ip} %{remote_port} %{http_connect} %{proxy_ssl_verify_result}"] if port else []
+    metrics = ["--no-proxy-insecure", "--write-out", "\\nairlock %{remote_ip} %{remote_port} %{http_connect} %{proxy_ssl_verify_result}"] if port else []
     code, out, err = run([*argv, "-fsS", "--max-time", "9", *metrics, url])
-    # A generic TLS failure remains inconclusive. During a known relay outage,
-    # verify the expected local TLS proxy and successful CONNECT before EOF/reset.
-    if (port and code == 35 and out.strip() == f"airlock 127.0.0.1 {port} 200 0"
-            and any(s in err.lower() for s in ("ssl_error_syscall", "reset by peer", "unexpected eof"))):
-        return NO_NET
-    if code in (5, 6, 7, 28, 52, 55, 56):
-        return NO_NET
+    if code and port:
+        # Only this curl invocation's TLS-verified loopback CONNECT is outage evidence.
+        lines = out.splitlines()
+        metrics = lines[-1].split() if lines else []
+        if len(metrics) == 5 and metrics[:3] == ["airlock", "127.0.0.1", str(port)] and metrics[4] == "0":
+            status = metrics[3]
+            if code in (22, 56) and status in ("502", "503", "504"):
+                return NO_NET
+            if code in (35, 52, 55, 56) and status == "200" and any(
+                diagnostic in err.lower() for diagnostic in ("ssl_error_syscall", "reset by peer", "unexpected eof")
+            ):
+                return NO_NET
     if code:
         return f"{ERROR} (curl {code})"
     fields = dict(s.split("=", 1) for s in out.splitlines() if "=" in s)

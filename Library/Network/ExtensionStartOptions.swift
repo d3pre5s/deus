@@ -1,8 +1,6 @@
 import Foundation
 
 enum ExtensionStartOptions {
-    static let snapshotFileName = "start_options.plist"
-
     static func encode(_ options: [String: NSObject]) throws -> Data {
         try PropertyListSerialization.data(fromPropertyList: options, format: .binary, options: 0)
     }

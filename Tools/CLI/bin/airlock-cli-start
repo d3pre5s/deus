@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -I
 """Start the saved Airlock profile and wait for the macOS connection state."""
 from enum import IntEnum
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -47,20 +48,68 @@ def wait_connected(command, start_args, timeout=30):
     raise RuntimeError("Timed out waiting for the Airlock profile to connect")
 
 
+def selected_targets(client, command):
+    if "targets" in client:
+        values = client["targets"]
+    else:
+        values = json.loads(subprocess.check_output([*command, "targets"], text=True, timeout=30))
+        if values == []:  # A new policy. Older profiles return all their saved selections.
+            values = ["~/.local/bin/claude"]
+    if not isinstance(values, list) or not values:
+        raise ValueError("Expected a nonempty array of selected target paths")
+
+    targets = []
+    for value in values:
+        if not isinstance(value, str) or "\0" in value:
+            raise ValueError("Invalid selected target path")
+        expanded = str(Path.home()) + value[1:] if value.startswith("~/") else value
+        path = Path(expanded)
+        if not path.is_absolute() or not path.name or ".." in path.parts or str(path) != expanded:
+            raise ValueError("Selected target paths must be absolute or begin with ~/")
+        if expanded in targets:
+            raise ValueError("Duplicate selected target")
+        if not path.exists():
+            raise RuntimeError(f"Selected target is missing: {path}")
+        targets.append(expanded)
+    return targets
+
+
+def read_settings(path):
+    settings = json.loads(path.read_text())
+    if not isinstance(settings, dict):
+        raise ValueError(f"Expected a JSON object in {path.name}")
+    return settings
+
+
+def port(settings, name):
+    value = settings.get(name)
+    if type(value) is not int or not 1 <= value <= 65535:
+        raise ValueError(f"Invalid {name}")
+    return str(value)
+
+
 def main():
+    if sys.argv[1:] not in ([], ["--provision"]):
+        raise ValueError("Usage: airlock-cli-start [--provision]")
     root = Path(__file__).resolve().parents[1]
-    desktop = Path("/Applications/Claude.app")
-    targets = [str(Path.home() / ".local/bin/claude"), str(desktop)]
-    browser_helper = desktop / "Contents/Helpers/chrome-native-host"
-    if browser_helper.is_file():
-        targets.append(str(browser_helper))
-    command = ["/Applications/Deus Airlock.app/Contents/MacOS/Deus Airlock", "--airlock-acceptance"]
+    client = read_settings(root / "client.json")
+    command = ["/Applications/Deus Airlock.app/Contents/MacOS/Deus Airlock", "--airlock-control"]
+    targets = selected_targets(client, command)
+    if str(Path.home() / ".local/bin/claude") not in targets:
+        raise ValueError("Select the vendor CLI at ~/.local/bin/claude to use its transport")
+    config = str(root / "provider.json")
+    peer = read_settings(root / "peer.json")
+    transport = [config, port(client, "port"), port(peer, "listen_port"), *targets]
+    if sys.argv[1:]:
+        subprocess.run([*command, "provision-cli", *transport], check=True, timeout=30)
+        return
     subprocess.run([*command, "bind", *targets], check=True, timeout=30)
-    wait_connected(command, [str(root / "provider.json"), *targets])
+    subprocess.run([*command, "verify-cli", *transport], check=True, timeout=30)
+    wait_connected(command, [config, *targets])
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+    except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
         sys.exit(f"Airlock: {error}")

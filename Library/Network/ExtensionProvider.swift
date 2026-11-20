@@ -14,8 +14,9 @@ open class ExtensionProvider: NEPacketTunnelProvider {
 
     public private(set) var commandServer: LibboxCommandServer?
     private lazy var platformInterface = ExtensionPlatformInterface(self)
-    public var tunnelOptions: [String: NSObject]?
-    private var startOptionsURL: URL?
+    private var tunnelOptions: [String: NSObject]?
+    private var snapshot: TunnelSnapshot?
+    private let transitionLock = NSLock()
 
     public struct OverridePreferences {
         public var includeAllNetworks: Bool = false
@@ -70,29 +71,46 @@ open class ExtensionProvider: NEPacketTunnelProvider {
         return PlatformMetadata.json(metadata)
     }
 
-    private func persistStartOptions(_ options: [String: NSObject]) throws {
-        guard let startOptionsURL else {
-            return
-        }
-        let data = try ExtensionStartOptions.encode(options)
-        try data.write(to: startOptionsURL, options: .atomic)
+    private var isProtected: Bool {
+        #if os(macOS)
+            return Bundle.main.bundleIdentifier == AirlockProfile.providerID ||
+                (protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == AirlockProfile.providerID
+        #else
+            return false
+        #endif
     }
 
-    private func loadPersistedStartOptions() throws -> [String: NSObject]? {
-        guard let startOptionsURL, FileManager.default.fileExists(atPath: startOptionsURL.path) else {
-            return nil
+    private func validated(_ options: [String: NSObject], replacing previous: [String: NSObject]? = nil) throws -> [String: NSObject] {
+        guard let config = options["configContent"] as? String else {
+            throw ExtensionStartupError("(packet-tunnel) error: missing configContent in tunnel options")
         }
-        let data = try Data(contentsOf: startOptionsURL)
-        return try ExtensionStartOptions.decode(data)
+        #if os(macOS)
+            if isProtected {
+                guard routingMethod == .sourceApplication, AirlockProfile.hasExactRules(appRules ?? []),
+                      let proto = protocolConfiguration as? NETunnelProviderProtocol,
+                      proto.providerBundleIdentifier == AirlockProfile.providerID, !proto.includeAllNetworks else {
+                    throw ExtensionStartupError("Airlock requires a per-app tunnel with selected applications.")
+                }
+                let binding = try AirlockProfile.cliBinding(in: proto)
+                if let previous {
+                    guard let active = previous["configContent"] as? String else { throw ExtensionStartupError("Missing active Airlock transport") }
+                    try AirlockTransportPolicy.checkReload(config, replacing: active, binding: binding)
+                } else {
+                    try AirlockTransportPolicy.validate(config, binding: binding)
+                }
+                return try AirlockProfile.protectedOptions(options)
+            }
+        #endif
+        return options
     }
 
     private func resolveStartOptions(_ startOptions: [String: NSObject]?) throws -> [String: NSObject] {
-        if let startOptions, startOptions["configContent"] as? String != nil {
+        if let startOptions, startOptions["configContent"] != nil {
             return startOptions
         }
         let persistedOptions: [String: NSObject]?
         do {
-            persistedOptions = try loadPersistedStartOptions()
+            persistedOptions = try snapshot?.load().map(ExtensionStartOptions.decode)
         } catch {
             throw ExtensionStartupError("(packet-tunnel) error: load start options: \(error.localizedDescription)")
         }
@@ -131,6 +149,24 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     }
 
     override open func startTunnel(options startOptions: [String: NSObject]?) async throws {
+        var closing: LibboxCommandServer?
+        do {
+            try transitionLock.withLock {
+                guard commandServer == nil else { throw ExtensionStartupError("Tunnel already running") }
+                do {
+                    try startTunnelLocked(options: startOptions)
+                } catch {
+                    closing = detachService(error: error)
+                    throw error
+                }
+            }
+        } catch {
+            closing?.close()
+            throw error
+        }
+    }
+
+    private func startTunnelLocked(options startOptions: [String: NSObject]?) throws {
         let basePath: String
         let workingPath: String
         let tempPath: String
@@ -152,28 +188,14 @@ open class ExtensionProvider: NEPacketTunnelProvider {
             tempPath = FilePath.cacheDirectory.relativePath
         #endif
 
-        startOptionsURL = URL(fileURLWithPath: basePath).appendingPathComponent(ExtensionStartOptions.snapshotFileName)
-
-        #if os(macOS)
-            if Variant.useSystemExtension {
-                let socketPath = basePath + "/command.sock"
-                let machServiceName = AppConfiguration.systemExtensionMachServiceName
-                xpcService = CommandXPCService(socketPath: socketPath)
-                xpcListener = NSXPCListener(machServiceName: machServiceName)
-                xpcListener.delegate = xpcService
-            }
-        #endif
-
-        let effectiveOptions = try resolveStartOptions(startOptions)
+        guard let proto = protocolConfiguration as? NETunnelProviderProtocol else {
+            throw ExtensionStartupError("Missing tunnel provider configuration")
+        }
+        let store = try TunnelSnapshot(directory: URL(fileURLWithPath: basePath), configuration: proto, protected: isProtected)
+        snapshot = store
+        let effectiveOptions = try validated(resolveStartOptions(startOptions))
+        let candidate = try ExtensionStartOptions.encode(effectiveOptions)
         try applyStartOptions(effectiveOptions)
-        if effectiveOptions["configContent"] == nil {
-            throw ExtensionStartupError("(packet-tunnel) error: missing configContent in tunnel options")
-        }
-        do {
-            try persistStartOptions(effectiveOptions)
-        } catch {
-            throw ExtensionStartupError("(packet-tunnel) error: persist start options: \(error.localizedDescription)")
-        }
         let options = LibboxSetupOptions()
         options.basePath = basePath
         options.workingPath = workingPath
@@ -214,34 +236,28 @@ open class ExtensionProvider: NEPacketTunnelProvider {
         LibboxDiscardPowerReportDraft()
 
         var error: NSError?
-        commandServer = LibboxNewCommandServer(platformInterface, platformInterface, &error)
-        if let error {
-            throw ExtensionStartupError("(packet-tunnel): create command server error: \(error.localizedDescription)")
+        guard let server = LibboxNewCommandServer(platformInterface, platformInterface, &error) else {
+            throw ExtensionStartupError("(packet-tunnel): create command server: " + (error?.localizedDescription ?? "unavailable"))
         }
+        commandServer = server
         do {
-            try commandServer!.start()
+            try server.start()
         } catch {
             throw ExtensionStartupError("(packet-tunnel): start command server error: \(error.localizedDescription)")
         }
 
         #if os(macOS)
             if Variant.useSystemExtension {
+                xpcService = CommandXPCService(socketPath: basePath + "/command.sock")
+                xpcListener = NSXPCListener(machServiceName: AppConfiguration.systemExtensionMachServiceName)
+                xpcListener.delegate = xpcService
                 xpcListener.resume()
                 Self.logger.info("set Command Server")
                 xpcService.commandServer = commandServer
             }
         #endif
 
-        do {
-            try await startService()
-        } catch {
-            #if os(macOS)
-                if Variant.useSystemExtension {
-                    xpcService.markServiceNotReady(error)
-                }
-            #endif
-            throw error
-        }
+        try store.activate(candidate, apply: { try startService() }, restore: { stopServiceLocked() })
         writeMessage("(packet-tunnel): Here I stand")
         #if os(iOS)
             if let commandServer {
@@ -266,19 +282,19 @@ open class ExtensionProvider: NEPacketTunnelProvider {
         }
     }
 
-    private func startService() async throws {
-        guard let configContent = tunnelOptions?["configContent"] as? String else {
+    private func startService() throws {
+        guard let commandServer, let configContent = tunnelOptions?["configContent"] as? String else {
             throw ExtensionStartupError("(packet-tunnel) error: missing configContent in tunnel options")
         }
 
         let options = LibboxOverrideOptions()
         do {
-            try commandServer!.startOrReloadService(configContent, options: options)
+            try commandServer.startOrReloadService(configContent, options: options)
         } catch {
             throw ExtensionStartupError("(packet-tunnel) error: start service: \(error.localizedDescription)")
         }
         #if os(macOS)
-            if !Variant.useSystemExtension, commandServer!.needWIFIState() {
+            if !Variant.useSystemExtension, commandServer.needWIFIState() {
                 locationManager = CLLocationManager()
                 locationDelegate = stubLocationDelegate()
                 locationManager!.delegate = locationDelegate
@@ -300,6 +316,10 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     #endif
 
     func stopService() {
+        transitionLock.withLock { stopServiceLocked() }
+    }
+
+    private func stopServiceLocked() {
         do {
             try commandServer?.closeService()
         } catch {
@@ -309,39 +329,70 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     }
 
     func reloadService() async throws {
-        writeMessage("(packet-tunnel) reloading service")
-        reasserting = true
-        defer {
-            reasserting = false
+        try transitionLock.withLock {
+            guard let tunnelOptions else { throw ExtensionStartupError("Tunnel is not running") }
+            try reloadLocked(tunnelOptions)
         }
-        try await startService()
     }
 
-    override open func stopTunnel(with reason: NEProviderStopReason) async {
-        writeMessage("(packet-tunnel) stopping, reason: \(reason)")
+    private func reloadLocked(_ requested: [String: NSObject]) throws {
+        guard commandServer != nil, let snapshot, let previous = tunnelOptions else {
+            throw ExtensionStartupError("Tunnel is not running")
+        }
+        let options = try validated(requested, replacing: previous)
+        let candidate = try ExtensionStartOptions.encode(options)
+        writeMessage("(packet-tunnel) reloading service")
+        reasserting = true
+        defer { reasserting = false }
+        try snapshot.activate(candidate, apply: {
+            try applyStartOptions(options)
+            try startService()
+        }, restore: {
+            do {
+                try applyStartOptions(validated(previous))
+                try startService()
+            } catch {
+                stopServiceLocked()
+                cancelTunnelWithError(error)
+                throw error
+            }
+        })
+    }
+
+    private func detachService(error: Error) -> LibboxCommandServer? {
         #if os(iOS)
             screenStateObserver?.cancel()
             screenStateObserver = nil
         #endif
-        stopService()
-        if let server = commandServer {
-            try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)
-            server.close()
-            commandServer = nil
-        }
+        stopServiceLocked()
+        let closing = commandServer
+        commandServer = nil
+        tunnelOptions = nil
+        overridePreferences = nil
+        snapshot = nil
         #if os(macOS)
             if Variant.useSystemExtension {
-                xpcService.markServiceNotReady(NSError(domain: "CommandXPC", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: "Command server stopped",
-                ]))
-                xpcListener.invalidate()
+                xpcService?.markServiceNotReady(error)
+                xpcListener?.invalidate()
                 xpcListener = nil
-                xpcService.commandServer = nil
+                xpcService?.commandServer = nil
                 xpcService = nil
             }
             locationManager = nil
             locationDelegate = nil
         #endif
+        return closing
+    }
+
+    override open func stopTunnel(with reason: NEProviderStopReason) async {
+        let server = transitionLock.withLock {
+            writeMessage("(packet-tunnel) stopping, reason: \(reason)")
+            return detachService(error: ExtensionStartupError("Command server stopped"))
+        }
+        if let server {
+            try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)
+            server.close()
+        }
         #if os(iOS)
             if #available(iOS 18.0, *) {
                 ControlCenter.shared.reloadControls(ofKind: ExtensionProfile.controlKind)
@@ -352,9 +403,7 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     override open func handleAppMessage(_ messageData: Data) async -> Data? {
         do {
             let options = try ExtensionStartOptions.decode(messageData)
-            try applyStartOptions(options)
-            try persistStartOptions(options)
-            try await reloadService()
+            try transitionLock.withLock { try reloadLocked(options) }
             return nil
         } catch {
             return error.localizedDescription.data(using: .utf8)

@@ -1,35 +1,124 @@
 # Terminal isolation for Claude Code
 
-The zsh entry point in `bin/claude` starts the vendor binary under macOS
-Seatbelt. New IP sockets may connect only to the local TCP proxy port.
-Children inherit that restriction across exec, including when they discard
-proxy variables. Claude, curl and Git use an authenticated HTTPS proxy.
-OpenSSH uses the CONNECT helper with the same local TLS trust configuration.
-The signed Network Extension owns the proxy and the VLESS session. A user
-LaunchAgent runs `peer-relay` and forwards encrypted TCP to one numeric VPS
-address. Clients cannot supply a different destination to that relay.
+## Install for one macOS user
 
-The local acceptance build provides the host control commands. The installed
-launcher reads `client.json` and `proxy.crt` from its installation directory.
-Curl reads the matching `proxy-cacert` setting from the local `.curlrc`.
-The relay reads `server`, `server_port` and `listen_port` from `peer.json`.
-Keep the provider profile, private key and proxy password outside Git.
+1. Install the signed PKG or copy Deus Airlock from its DMG to
+   `/Applications/Deus Airlock.app`. Open Airlock, choose **Install System
+   Extension** and approve the extension in macOS. The terminal tools require
+   a graphical login, `/usr/bin/python3` from Apple's Command Line Tools or
+   Xcode, and the signed vendor CLI at `~/.local/bin/claude`.
+2. Prepare a private directory containing the four files below. Keep this
+   directory outside the repository and restrict access to your account.
+3. Run the setup from the installed app as the login user. Choose the input
+   directory explicitly. macOS can ask for permission to save the VPN policy.
 
-In a fresh interactive zsh, `whence -p claude` should end in
-`Deus Airlock/CLI/bin/claude`. The vendor update target is still in
-`~/.local/bin`. Running that original executable directly skips the launcher.
-Run `airlock-cli-start` to request the stored profile when the provider is
-disconnected. The command waits up to 30 seconds after binding for macOS to report
-a connected tunnel. The separate egress check verifies the external IP. The local acceptance host reads back the exact rules for the
-CLI, /Applications/Claude.app and its separately launched chrome-native-host when installed before starting that profile. The Desktop
-rule uses the signed application identity and includes spawned helpers. Verify
-a local Code session separately after installation or a Claude update.
+```sh
+setup="/Applications/Deus Airlock.app/Contents/Resources/AirlockCLI/airlock-setup"
+"$setup" install --config-dir "$HOME/private-airlock-inputs"
+```
 
-For absolute `/usr/bin/ssh` invocations, place the block from
-`ssh_config.airlock` at the start of the user's `~/.ssh/config`. Replace an
-existing Airlock block when updating. The launcher provides `AIRLOCK_SSH_CONNECT`
-and treats an empty `SHELL` as unset so OpenSSH can use its default shell.
-Run `python3 Tests/CLI/test_ssh.py` on macOS to check both SSH entry points.
+| Input | Values used during setup |
+| --- | --- |
+| `client.json` | Integer proxy `port`, `password`, and an optional nonempty `targets` array of signed paths. For terminal-only use, set `"targets": ["~/.local/bin/claude"]`. Add the Desktop app and its separately launched chrome-native-host explicitly if selected. |
+| `peer.json` | Numeric VPS address in `server`, its TCP `server_port` and the loopback relay's TCP `listen_port`. The client and relay use different local ports. |
+| `provider.json` | A single VLESS/REALITY upstream via the selected relay and one TLS HTTP listener on `127.0.0.1` at the client port. Its only proxy user is `airlock` with the password from `client.json`. The TLS certificate and key are inline. The signed host checks the complete transport policy before saving. |
+| `proxy.crt` | The PEM certificate of that loopback HTTPS proxy. The launcher gives it to curl, Git, Node and the SSH CONNECT helper in the protected process tree. |
+
+For an earlier authenticated `mixed` listener, setup changes its type to
+`http` in the private installed copy. The host pins the bytes of that copy.
+The user-supplied files retain their original contents. Without `targets`,
+the controller uses the previously saved selection. The initial selection
+on a fresh account is the vendor CLI.
+
+Setup installs the versioned scripts and private inputs under
+`~/Library/Application Support/Deus Airlock`, registers the peer relay in
+the user's `Library/LaunchAgents`, and adds marked blocks to the interactive
+zsh configuration and `~/.ssh/config`. The SSH block applies to commands
+launched under Airlock. The relay verifies the fingerprint of `peer.json`
+from its LaunchAgent before opening a listener. Setup finishes by saving
+the selected application rules and the provider pin through the signed host.
+
+Open a **new interactive zsh**. Check which executable it will run, then
+start the profile and run Claude.
+
+```sh
+whence -v claude
+whence -p claude
+airlock-cli-start
+claude
+```
+
+The executable path should end in `Deus Airlock/CLI/bin/claude`. Check any
+alias or function reported by `whence -v`. The vendor binary remains in
+`~/.local/bin`; invoking its absolute path skips the launcher. The
+launcher passes its network restriction to children across exec. Claude,
+curl, Git and OpenSSH use the authenticated TLS proxy. The signed Network
+Extension owns the proxy and VLESS session. The user relay forwards the
+encrypted stream to the selected numeric VPS.
+
+`airlock-cli-start` reads back the selected application rules and waits
+up to 30 seconds after binding for macOS to report the connected state.
+Verify the actual egress address separately. Repeat live acceptance for a
+new build, a changed provider or a new Claude version.
+
+## Update and roll back
+
+Run the same explicit setup command after installing an updated Airlock app
+or changing the four local inputs. Stop the protected transport in Airlock
+before replacing a working provider configuration. An identical install
+reuses its release and relay. A new release retains the previous local
+files for rollback. Setup reports an unrelated LaunchAgent or edited
+Airlock settings block before switching the installation.
+
+```sh
+"/Applications/Deus Airlock.app/Contents/Resources/AirlockCLI/airlock-setup" rollback
+```
+
+Each rollback goes back one local release. Rolling back the initial install
+removes its relay, launcher and marked shell/SSH blocks. Other settings and
+later edits outside those blocks are preserved. Open a new zsh after
+rollback. The saved macOS per-app policy retains its pin. If the previous
+release needs different pins or targets, rollback stops before switching.
+Close the selected applications, stop the transport, then run
+`"$setup" rollback --restore-policy` to authorize the prior release through
+the signed host. A rejected policy restores the current local release and
+relay. Start the profile again with `airlock-cli-start`.
+
+### Migrate a manual build-12 installation
+
+Keep the matching signed build-12 qualification app for recovery. Close
+the selected applications, stop the protected transport and confirm
+macOS reports it disconnected. Install the new signed app and approve its
+extension. The command below names the old private inputs explicitly.
+
+```sh
+setup="/Applications/Deus Airlock.app/Contents/Resources/AirlockCLI/airlock-setup"
+cli="$HOME/Library/Application Support/Deus Airlock/CLI"
+"$setup" migrate --config-dir "$cli"
+```
+
+Migration recognizes the documented CLI directory and its user LaunchAgent.
+It moves both into the private `Terminal Releases/legacy-v12` backup on
+the same volume and keeps every file, including user additions. Existing
+shell and SSH settings remain in place. If onboarding fails, it restores
+the original directory, original plist and prior relay registration.
+A repeat can read the same original inputs from the backup.
+
+To return to that installation later, first roll back any newer managed
+releases to the migration boundary. Close the selected apps and stop the
+transport. Restore the matching signed build-12 qualification app and
+system extension, then run the saved recovery command as the same user.
+
+```sh
+"$HOME/Library/Application Support/Deus Airlock/Terminal Releases/legacy-v12/airlock-setup" restore-legacy
+```
+
+Recovery checks build 12 and the qualification host's disconnected policy
+before restoring the original local files and registration. Open a new zsh
+and qualify the restored system extension and network path before using
+the protected applications.
+
+## Offline and live checks
 
 Run `python3 Tests/CLI/test_launcher.py` on macOS to check enforcement against
 two real local listening sockets. Live acceptance also needs a VPS exit check,

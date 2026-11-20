@@ -134,8 +134,17 @@ public class ExtensionProfile: ObservableObject {
         }
     }
 
+    private func requireEditableProfile() throws {
+        #if os(macOS)
+            if let manager, AirlockProfile.owns(manager, providerID: AppConfiguration.systemExtensionBundleID) {
+                throw AirlockProfile.error("Airlock manages this profile through its per-app policy.")
+            }
+        #endif
+    }
+
     public func updateOnDemand(enabled: Bool, useDefaultRules: Bool) async throws {
         guard let manager else { return }
+        try requireEditableProfile()
         manager.isOnDemandEnabled = enabled
         if !enabled {
             if let proto = manager.protocolConfiguration as? NETunnelProviderProtocol {
@@ -167,6 +176,7 @@ public class ExtensionProfile: ObservableObject {
 
     public func updateProtocolConfiguration() async throws {
         guard let manager else { return }
+        try requireEditableProfile()
         await applyProtocolConfiguration()
         try await manager.saveToPreferences()
     }
@@ -186,6 +196,14 @@ public class ExtensionProfile: ObservableObject {
             return
         }
         guard let manager else { return }
+        #if os(macOS)
+            if AirlockProfile.owns(manager, providerID: AppConfiguration.systemExtensionBundleID),
+               let tunnel = manager as? NETunnelProviderManager {
+                try AirlockTargetBinding.verifyCurrent(tunnel, home: AirlockTargetBinding.loginHome())
+                try tunnel.connection.startVPNTunnel()
+                return
+            }
+        #endif
         try await fetchProfile()
         manager.isEnabled = true
         let alwaysOn = await SharedPreferences.alwaysOn.get()
@@ -195,6 +213,7 @@ public class ExtensionProfile: ObservableObject {
             await setOnDemandRules(useDefaultRules: alwaysOn)
         }
         if let proto = manager.protocolConfiguration as? NETunnelProviderProtocol {
+            TunnelSnapshot.identify(proto)
             var config = proto.providerConfiguration ?? [:]
             if config.removeValue(forKey: "wasOnDemandEnabled") != nil {
                 proto.providerConfiguration = config
@@ -210,6 +229,7 @@ public class ExtensionProfile: ObservableObject {
         if isMock {
             return
         }
+        try requireEditableProfile()
         let options = try await prepareStartOptions()
         let data = try ExtensionStartOptions.encode(options)
         guard let session = connection as? NETunnelProviderSession else {
@@ -289,6 +309,9 @@ public class ExtensionProfile: ObservableObject {
             return
         }
         guard let manager else { return }
+        #if os(macOS)
+            if AirlockProfile.stopTransport(manager, providerID: AppConfiguration.systemExtensionBundleID) { return }
+        #endif
         if manager.isOnDemandEnabled {
             if let proto = manager.protocolConfiguration as? NETunnelProviderProtocol {
                 var config = proto.providerConfiguration ?? [:]
@@ -323,10 +346,18 @@ public class ExtensionProfile: ObservableObject {
 
     public static func load() async throws -> ExtensionProfile? {
         let managers = try await NETunnelProviderManager.loadAllFromPreferences()
-        if managers.isEmpty {
-            return nil
-        }
-        let profile = ExtensionProfile(managers[0])
+        let selected: NETunnelProviderManager?
+        #if os(macOS)
+            if AppConfiguration.isAirlock {
+                selected = try AirlockProfile.select(managers, providerID: AppConfiguration.systemExtensionBundleID)
+            } else {
+                selected = managers.first
+            }
+        #else
+            selected = managers.first
+        #endif
+        guard let selected else { return nil }
+        let profile = ExtensionProfile(selected)
         if profile.status == .disconnected {
             schedulePromoteOOMDraft()
         }
@@ -334,6 +365,11 @@ public class ExtensionProfile: ObservableObject {
     }
 
     public static func install() async throws {
+        #if os(macOS)
+            if AppConfiguration.isAirlock {
+                throw AirlockProfile.error("Select and bind your applications with Airlock before starting the tunnel.")
+            }
+        #endif
         let manager = NETunnelProviderManager()
         manager.localizedDescription = Variant.applicationName
         let tunnelProtocol = NETunnelProviderProtocol()
@@ -342,6 +378,7 @@ public class ExtensionProfile: ObservableObject {
         } else {
             tunnelProtocol.providerBundleIdentifier = AppConfiguration.extensionBundleID
         }
+        TunnelSnapshot.identify(tunnelProtocol)
         tunnelProtocol.serverAddress = "sing-box"
         manager.protocolConfiguration = tunnelProtocol
         manager.isEnabled = true

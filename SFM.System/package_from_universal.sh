@@ -7,9 +7,10 @@ cd "$REPO_ROOT"
 APPLICATION_SIGN_IDENTITY="${APPLICATION_SIGN_IDENTITY:-Developer ID Application}"
 INSTALLER_SIGN_IDENTITY="${INSTALLER_SIGN_IDENTITY:-Developer ID Installer}"
 UNIVERSAL_APP="build/Airlock-universal/Deus Airlock.app"
-PKG_IDENTIFIER="$(sed -n 's/.*<pkg-ref id="\([^"]*\)".*/\1/p' SFM.System/distribution-universal.xml | head -1)"
 
 [[ -d "$UNIVERSAL_APP" ]] || { echo "error: $UNIVERSAL_APP not found" >&2; exit 1; }
+
+bash Tools/bundle-airlock-cli.sh verify "$UNIVERSAL_APP/Contents/Resources/AirlockCLI"
 
 thin() {
 	local arch="$1" app="$2"
@@ -44,13 +45,7 @@ build_pkg() {
 	rm -rf "$pkgroot" "build/component-$arch.pkg" "build/Deus-Airlock-$label.pkg"
 	mkdir -p "$pkgroot"
 	ditto "$app_dir" "$pkgroot/Deus Airlock.app"
-	pkgbuild --root "$pkgroot" \
-		--component-plist SFM.System/component.plist \
-		--identifier "$PKG_IDENTIFIER" \
-		--install-location /Applications \
-		--min-os-version 13.0 \
-		--compression latest \
-		"build/component-$arch.pkg"
+	bash Tools/build-airlock-component.sh "$pkgroot" "build/component-$arch.pkg"
 	productbuild --distribution "SFM.System/distribution-$arch.xml" \
 		--package-path build \
 		--resources SFM.System/Resources \

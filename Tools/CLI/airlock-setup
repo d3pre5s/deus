@@ -1,0 +1,497 @@
+#!/usr/bin/python3 -I
+"""Install or roll back the terminal tools for the current macOS login."""
+import argparse
+import errno
+import fcntl
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import plistlib
+import re
+import ssl
+import stat
+import subprocess
+import sys
+import tempfile
+import uuid
+
+
+LABEL = "io.github.d3pre5s.deusairlock.cli-peer"
+PROGRAMS = ("bin/claude", "bin/airlock-cli-start", "helpers/ssh", "peer-relay", "ssh-connect")
+INPUTS = ("client.json", "provider.json", "peer.json", "proxy.crt")
+RUNTIME = (*PROGRAMS, "ssh_config.airlock", "VERSION")
+GENERATED = (".curlrc", ".receipt.json", ".ready")
+BEGIN = b"# >>> Deus Airlock terminal >>>\n"
+END = b"# <<< Deus Airlock terminal <<<\n"
+ZSH_BLOCK = (b"\n" + BEGIN + b'() {\n'
+             b'    local airlock_bin="$HOME/Library/Application Support/Deus Airlock/CLI/bin"\n'
+             b'    path=("$airlock_bin" "${(@)path:#${(b)airlock_bin}}")\n'
+             b'}\n' + END)
+
+
+def regular_bytes(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"Expected a regular file at {path}")
+    return path.read_bytes()
+
+
+def port(value):
+    if type(value) is not int or not 1 <= value <= 65535:
+        raise ValueError("Invalid TCP port in terminal inputs")
+    return value
+
+
+def certificate(pem):
+    if not isinstance(pem, str) or pem.count("-----BEGIN CERTIFICATE-----") != 1:
+        raise ValueError("Expected one inline PEM certificate")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(cadata=pem)
+    return ssl.PEM_cert_to_DER_cert(pem.strip())
+
+
+def read_payload(bundle, source):
+    files = {name: regular_bytes(bundle / name) for name in RUNTIME}
+    files.update({name: regular_bytes(source / name) for name in INPUTS})
+    client, provider, peer = (json.loads(files[name]) for name in INPUTS[:3])
+    if not all(isinstance(obj, dict) for obj in (client, provider, peer)):
+        raise ValueError("Expected JSON objects for client, provider and peer")
+    proxy_port, relay_port = port(client.get("port")), port(peer.get("listen_port"))
+    port(peer.get("server_port"))
+    try:
+        server = ipaddress.ip_address(peer["server"])
+        if not isinstance(peer["server"], str) or server.is_unspecified or server.is_multicast or server.is_loopback:
+            raise ValueError
+    except (KeyError, ValueError, TypeError):
+        raise ValueError("Expected one numeric upstream peer address") from None
+    if proxy_port == relay_port:
+        raise ValueError("The proxy and relay need distinct local ports")
+    inbounds = provider.get("inbounds")
+    if not isinstance(inbounds, list) or not all(isinstance(item, dict) for item in inbounds):
+        raise ValueError("Invalid provider inbounds")
+    proxies = [item for item in inbounds if item.get("type") != "tun"]
+    if len(proxies) != 1:
+        raise ValueError("Expected exactly one authenticated loopback proxy")
+    proxy = proxies[0]
+    if (proxy.get("type") not in ("http", "mixed") or proxy.get("listen") != "127.0.0.1"
+            or port(proxy.get("listen_port")) != proxy_port):
+        raise ValueError("Provider and client disagree on the loopback proxy")
+    password = client.get("password")
+    if (not isinstance(password, str) or not password
+            or proxy.get("users") != [{"username": "airlock", "password": password}]):
+        raise ValueError("Proxy credentials do not match client.json")
+    tls = proxy.get("tls")
+    if (not isinstance(tls, dict) or tls.get("enabled") is not True
+            or certificate(tls.get("certificate")) != certificate(files["proxy.crt"].decode("ascii"))):
+        raise ValueError("The proxy TLS certificate does not match proxy.crt")
+    outbounds = provider.get("outbounds")
+    if (not isinstance(outbounds, list) or len(outbounds) != 1 or not isinstance(outbounds[0], dict)
+            or outbounds[0].get("type") != "vless" or outbounds[0].get("server") != "127.0.0.1"
+            or port(outbounds[0].get("server_port")) != relay_port):
+        raise ValueError("The provider must use the selected local relay port")
+    if proxy["type"] == "mixed":
+        # The authenticated HTTPS clients need CONNECT only. Preserve the user's
+        # source bytes; the signed host validates and pins the staged HTTP profile.
+        proxy["type"] = "http"
+        files["provider.json"] = (json.dumps(provider, ensure_ascii=False, indent=2) + "\n").encode()
+    return files
+
+
+def atomic_write(path, data, default_mode=0o600):
+    if path.is_symlink():
+        raise ValueError(f"Refusing to replace symlink {path}")
+    if path.exists() and regular_bytes(path) == data:
+        return
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else default_mode
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            os.fchmod(handle.fileno(), mode)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def private_dir(path):
+    if path.is_symlink():
+        raise ValueError(f"Refusing to follow directory symlink {path}")
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+
+def curl_settings(release):
+    # Curl's config parser supports double-quoted paths and escaped backslashes.
+    return ('proxy-cacert = ' + json.dumps(str(release / "proxy.crt"), ensure_ascii=False) + '\n').encode()
+
+
+def release_path(store, name):
+    if not isinstance(name, str) or not re.fullmatch(r"release-[a-zA-Z0-9_-]+", name):
+        raise ValueError("Invalid terminal release receipt")
+    target = store / name
+    if target.is_symlink() or not target.is_dir():
+        raise ValueError("Missing managed terminal release")
+    return target
+
+
+def active_release(cli, store):
+    if cli.is_symlink():
+        target = cli.resolve(strict=True)
+        if target.parent == store and release_path(store, target.name) == target:
+            regular_bytes(target / ".receipt.json")
+            return target
+    if os.path.lexists(cli):
+        raise ValueError(f"Existing terminal installation is unmanaged at {cli}")
+    return None
+
+
+def select_release(cli, release):
+    if release is None:
+        cli.unlink(missing_ok=True)
+        return
+    temporary = cli.with_name(f".airlock-link-{uuid.uuid4().hex}")
+    try:
+        temporary.symlink_to(release.relative_to(cli.parent))
+        os.replace(temporary, cli)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def discard_release(release):
+    # Other user files can coexist with an installation. Remove only our entries.
+    for name in (*RUNTIME, *INPUTS, *GENERATED):
+        path = release / name
+        if path.parent.is_symlink():
+            raise ValueError(f"Unexpected symlink in managed release {release}")
+        path.unlink(missing_ok=True)
+    for folder in (release / "bin", release / "helpers", release):
+        try:
+            folder.rmdir()
+        except OSError as error:
+            if error.errno not in (errno.ENOTEMPTY, errno.ENOENT):
+                raise
+
+
+def stage(store, files, receipt):
+    result = Path(tempfile.mkdtemp(prefix="release-", dir=store))
+    try:
+        for name, data in files.items():
+            path = result / name
+            private_dir(path.parent)
+            atomic_write(path, data, 0o700 if name in PROGRAMS else 0o600)
+        atomic_write(result / ".curlrc", curl_settings(result))
+        atomic_write(result / ".receipt.json", json.dumps(receipt).encode())
+        return result
+    except BaseException:
+        discard_release(result)
+        raise
+
+
+def managed_block(path, block, allowed_blocks, *, prepend, present, existed):
+    raw = regular_bytes(path) if os.path.lexists(path) else b""
+    if BEGIN in raw or END in raw:
+        previous = next((candidate for candidate in allowed_blocks if candidate in raw), None)
+        if previous is None or raw.count(BEGIN) != 1 or raw.count(END) != 1:
+            raise ValueError(f"Conflicting Airlock settings in {path}; preserve them before retrying")
+        desired = raw.replace(previous, block if present else b"", 1)
+    elif present:
+        desired = block + raw if prepend else raw + block
+    else:
+        desired = raw
+    return desired if desired or existed or present else None
+
+
+class Login:
+    def __init__(self, home, rc, run):
+        self.home = home
+        self.cli = home / "Library/Application Support/Deus Airlock/CLI"
+        self.store = self.cli.parent / "Terminal Releases"
+        self.rc, self.ssh = rc, home / ".ssh/config"
+        self.plist = home / f"Library/LaunchAgents/{LABEL}.plist"
+        self.run = run
+        self.domain = f"gui/{os.getuid()}"
+
+    def loaded(self):
+        result = self.run(["/bin/launchctl", "print", f"{self.domain}/{LABEL}"],
+                          capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            return True
+        if result.returncode in (3, 113):
+            return False
+        raise ValueError("Could not inspect the relay in this user's GUI login domain")
+
+    def service(self, action):
+        args = ([self.domain, str(self.plist)] if action == "bootstrap" else [f"{self.domain}/{LABEL}"])
+        self.run(["/bin/launchctl", action, *args], check=True, timeout=20)
+
+    def agent(self, peer_digest):
+        return {"Label": LABEL, "ProgramArguments": [str(self.cli / "peer-relay"), "--peer-sha256", peer_digest],
+                "KeepAlive": True, "RunAtLoad": True}
+
+    def files(self, receipt, target, allowed):
+        # Only replace bytes from a known active or pending release. This also
+        # lets a newer bundle roll back a release with an older SSH snippet.
+        present = target is not None
+        ssh = target[0] if target else b""
+        changes = {
+            self.rc: managed_block(self.rc, ZSH_BLOCK, [ZSH_BLOCK] if allowed else [],
+                                   prepend=False, present=present, existed=receipt["had_rc"]),
+            self.ssh: managed_block(self.ssh, ssh, [pair[0] for pair in allowed],
+                                    prepend=True, present=present, existed=receipt["had_ssh"]),
+        }
+        if os.path.lexists(self.plist):
+            installed = plistlib.loads(regular_bytes(self.plist))
+            if not any(installed == self.agent(pair[1]) for pair in allowed):
+                raise ValueError(f"Existing LaunchAgent is unmanaged or edited at {self.plist}")
+        changes[self.plist] = plistlib.dumps(self.agent(target[1])) if target else None
+        return changes
+
+    @staticmethod
+    def write(changes):
+        for path, data in changes.items():
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                private_dir(path.parent)
+                atomic_write(path, data)
+
+
+def policy_inputs(release):
+    client = json.loads(regular_bytes(release / "client.json"))
+    peer = json.loads(regular_bytes(release / "peer.json"))
+    return (regular_bytes(release / "provider.json"), client["port"], peer["listen_port"], client.get("targets"))
+
+
+def check_legacy_layout(login):
+    if login.cli.is_symlink() or not login.cli.is_dir() or login.cli.stat().st_uid != os.getuid():
+        raise ValueError("Expected the login user's manual build-12 CLI directory")
+    for name in (*PROGRAMS, *INPUTS):
+        regular_bytes(login.cli / name)
+    agent = plistlib.loads(regular_bytes(login.plist))
+    if not isinstance(agent, dict):
+        raise ValueError("Expected the documented build-12 LaunchAgent plist")
+    relay = str(login.cli / "peer-relay")
+    args = agent.get("ProgramArguments")
+    if (not isinstance(args, list) or not args or args[-1] != relay
+            or (args != [relay] and (args[0] != "/usr/bin/python3" or
+                                     any(flag not in ("-I", "-B", "-u") for flag in args[1:-1])))
+            or agent.get("Label") != LABEL or agent.get("Program", args[0]) != args[0]):
+        raise ValueError("Existing LaunchAgent does not match the documented build-12 relay")
+
+
+def restore_backup(login, backup):
+    receipt = json.loads(regular_bytes(backup / "state.json"))
+    # A move on the same volume preserves every private file, ACL and user edit.
+    moves = [(saved, original) for saved, original in ((backup / "CLI", login.cli), (backup / "relay.plist", login.plist))
+             if saved.exists()]
+    for _, original in moves:
+        if os.path.lexists(original):
+            raise ValueError(f"Preserve the conflicting file at {original} before retrying restore-legacy")
+    for saved, original in moves:
+        saved.rename(original)
+    check_legacy_layout(login)
+    if receipt["loaded"] and not login.loaded():
+        login.service("bootstrap")
+    for name in ("state.json", "airlock-setup"):
+        (backup / name).unlink(missing_ok=True)
+    try:
+        backup.rmdir()
+    except OSError as error:
+        if error.errno != errno.ENOTEMPTY:
+            raise
+
+
+def migrate_legacy(login, bundle, source, backup):
+    # The normal installer never adopts an existing installation. Migration is
+    # explicit and owns only these two documented locations.
+    source = source.absolute()
+    if not backup.exists():
+        check_legacy_layout(login)
+        read_payload(bundle, source)
+        loaded = login.loaded()
+        recovery = regular_bytes(bundle / "airlock-setup")
+        private_dir(login.store)
+        backup.mkdir(mode=0o700)
+        try:
+            atomic_write(backup / "airlock-setup", recovery, 0o700)
+            atomic_write(backup / "state.json", json.dumps({"loaded": loaded}).encode())
+        except BaseException:
+            (backup / "airlock-setup").unlink(missing_ok=True)
+            (backup / "state.json").unlink(missing_ok=True)
+            backup.rmdir()
+            raise
+    else:
+        regular_bytes(backup / "state.json")
+    if source.is_relative_to(login.cli):
+        source = backup / "CLI" / source.relative_to(login.cli)
+    if login.cli.is_symlink():
+        # Repeating a successful migration uses the protected original inputs.
+        return configure_locked(login, bundle, source)
+    try:
+        if not (backup / "CLI").exists():
+            check_legacy_layout(login)
+        if login.loaded():
+            login.service("bootout")
+        if not (backup / "CLI").exists():
+            login.cli.rename(backup / "CLI")
+        if not (backup / "relay.plist").exists():
+            login.plist.rename(backup / "relay.plist")
+        configure_locked(login, bundle, source)
+    except BaseException:
+        restore_backup(login, backup)
+        raise
+
+
+def restore_legacy_login(login, bundle, backup):
+    regular_bytes(backup / "state.json")
+    host = "/Applications/Deus Airlock.app/Contents/MacOS/Deus Airlock"
+    info = Path(host).parents[1] / "Info.plist"
+    version = login.run(["/usr/bin/plutil", "-extract", "CFBundleVersion", "raw", str(info)],
+                        text=True, capture_output=True, check=True, timeout=5).stdout.strip()
+    if version != "12":
+        raise ValueError("Restore the matching signed build-12 qualification app and extension before restore-legacy")
+    check = login.run([host, "--airlock-acceptance", "status"], text=True, capture_output=True, timeout=10)
+    if check.returncode or "Acceptance policy present: true; connection status: 1" not in check.stdout.splitlines():
+        raise ValueError("Restore the build-12 qualification host and its disconnected policy before restore-legacy")
+    if login.cli.is_symlink():
+        current = active_release(login.cli, login.store)
+        if json.loads(regular_bytes(current / ".receipt.json"))["previous"]:
+            raise ValueError("Roll back later managed releases before restoring the legacy installation")
+        configure_locked(login, bundle, None, allow_legacy=True)
+    restore_backup(login, backup)
+
+
+def configure(home, bundle, source, *, run=subprocess.run, zsh_dir=None, restore_policy=False,
+              migrate=False, restore_legacy=False):
+    home = Path(home).resolve(strict=True)
+    rc = (Path(zsh_dir) if zsh_dir else home) / ".zshrc"
+    login = Login(home, rc, run)
+    # Lock an existing directory so cleanup never unlinks a lock held by a waiter.
+    descriptor = os.open(home, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        backup = login.store / "legacy-v12"
+        for path in (backup, login.store, login.cli.parent, rc.parent, login.ssh.parent, login.plist.parent):
+            if not path.is_relative_to(home) or path.resolve() != path:
+                raise ValueError(f"Expected a directory inside this login home at {path}")
+        if migrate:
+            return migrate_legacy(login, bundle, source, backup)
+        if restore_legacy:
+            return restore_legacy_login(login, bundle, backup)
+        return configure_locked(login, bundle, source, restore_policy=restore_policy)
+    finally:
+        os.close(descriptor)
+
+
+def configure_locked(login, bundle, source, *, restore_policy=False, allow_legacy=False):
+    current = active_release(login.cli, login.store)
+    if current is None and source is None:
+        return
+    receipt = (json.loads(regular_bytes(current / ".receipt.json")) if current else
+               {"rc": str(login.rc.relative_to(login.home)), "had_rc": login.rc.exists(),
+                "had_ssh": login.ssh.exists(), "previous": None})
+    if str(login.rc.relative_to(login.home)) != receipt["rc"]:
+        raise ValueError("Use the same ZDOTDIR as the original terminal installation")
+    was_loaded = login.loaded()
+    if was_loaded and current is None:
+        raise ValueError("An unmanaged relay already uses the Airlock LaunchAgent label")
+    def setup_pair(fragment, digest):
+        return (BEGIN + fragment.rstrip(b"\n") + b"\n" + END, digest)
+
+    def installed_pair(release):
+        if release is None:
+            return None
+        metadata = json.loads(regular_bytes(release / ".receipt.json"))
+        return setup_pair(regular_bytes(release / "ssh_config.airlock"), metadata["peer_sha256"])
+
+    old_pair = installed_pair(current)
+    target = current
+    files = None
+    if source is None:
+        target = release_path(login.store, receipt["previous"]) if receipt["previous"] else None
+        if target and not restore_policy and policy_inputs(current) != policy_inputs(target):
+            raise ValueError("The previous release has a different policy. Stop Airlock and use rollback --restore-policy")
+        if target is None and (login.store / "legacy-v12/state.json").exists() and not allow_legacy:
+            raise ValueError("This release replaces a legacy installation; use the documented restore-legacy procedure")
+        new_pair = installed_pair(target)
+    else:
+        files = read_payload(bundle, source)
+        digest = hashlib.sha256(files["peer.json"]).hexdigest()
+        new_pair = setup_pair(files["ssh_config.airlock"], digest)
+
+    changes = login.files(receipt, new_pair, [old_pair] if old_pair else [])
+    if files is not None:
+        same = (current is not None and old_pair == new_pair
+                and all((current / name).is_file() and regular_bytes(current / name) == data
+                        for name, data in files.items())
+                and (current / ".curlrc").is_file() and regular_bytes(current / ".curlrc") == curl_settings(current))
+        if not same:
+            private_dir(login.store)
+            target = stage(login.store, files, dict(receipt, previous=current.name if current else None,
+                                                   peer_sha256=new_pair[1]))
+
+    changed = target != current
+    service_changed = False
+    try:
+        if changed:
+            if target:
+                (target / ".ready").unlink(missing_ok=True)
+            select_release(login.cli, target)
+        login.write(changes)
+        # .ready is written after registration. A process interrupted between
+        # switching releases and registration retries the launchd transition.
+        restart = changed or (target is not None and not (target / ".ready").is_file())
+        if was_loaded and restart:
+            service_changed = True
+            login.service("bootout")
+        if target is not None and (restart or not was_loaded):
+            service_changed = True
+            login.service("bootstrap")
+            atomic_write(target / ".ready", b"registered\n")
+        if source is not None or (restore_policy and target is not None):
+            login.run([str(target / "bin/airlock-cli-start"), "--provision"], check=True, timeout=90)
+    except BaseException:
+        # The host validates and saves rules + pin as one operation. Restore
+        # only user files and the prior relay state on a failed installation.
+        if changed:
+            select_release(login.cli, current)
+        login.write(login.files(receipt, old_pair, [pair for pair in (old_pair, new_pair) if pair]))
+        if service_changed:
+            if login.loaded():
+                login.service("bootout")
+            if was_loaded:
+                login.service("bootstrap")
+        if source is not None and changed:
+            discard_release(target)
+        raise
+    if source is None and current is not None:
+        discard_release(current)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="action", required=True)
+    install = commands.add_parser("install", help="provision terminal tools, relay and selected app policy")
+    install.add_argument("--config-dir", type=Path, required=True)
+    migrate = commands.add_parser("migrate", help="back up and migrate the documented manual build-12 setup")
+    migrate.add_argument("--config-dir", type=Path, required=True)
+    rollback = commands.add_parser("rollback", help="restore the preceding managed terminal installation")
+    rollback.add_argument("--restore-policy", action="store_true", help="explicitly provision the prior release's policy")
+    commands.add_parser("restore-legacy", help="restore a migration backup with its matching build-12 host")
+    args = parser.parse_args()
+    if os.geteuid() == 0:
+        parser.exit(1, "Run airlock-setup as the macOS login user, without sudo.\n")
+    os.umask(0o077)
+    try:
+        configure(Path.home(), Path(__file__).resolve().parent, getattr(args, "config_dir", None),
+                  zsh_dir=os.environ.get("ZDOTDIR"), migrate=args.action == "migrate",
+                  restore_policy=getattr(args, "restore_policy", False), restore_legacy=args.action == "restore-legacy")
+    except (OSError, ValueError, subprocess.SubprocessError, plistlib.InvalidFileException) as error:
+        parser.exit(1, f"Airlock terminal setup: {error}\n")
+    print("Terminal provisioning completed." if args.action in ("install", "migrate") else "Terminal rollback completed.")
+
+
+if __name__ == "__main__":
+    main()

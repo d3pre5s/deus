@@ -167,3 +167,45 @@ no network, then the expected exit again. A separate Mac probe stayed online
 with a different exit. Sampled Desktop TCP sockets on utun4 disappeared at
 interruption. The early recovery sample had no Desktop socket; only gateway
 recovery was confirmed. The relay was restored and both rules were read back.
+
+## 2026-11-20 — audit fixes, build 13
+
+The release candidate is 1.14.4 (13). The installed 1.14.4 (12) and its VPN
+preferences were left in place. The transport exception approved for the
+terminal launcher is recorded in the [MVP contract](superpowers/specs/2026-11-18-deus-airlock.md).
+
+| Audit item | Evidence from this revision |
+| --- | --- |
+| P1 · GUI Stop | A replay of the actual Stop handler on an in-memory Apple per-app manager retained its app rule and unconditional On Demand. Before the change the same handler cleared On Demand. Tests cover both manager orderings, a renamed owned profile, a foreign profile and ambiguous ownership. GUI Start also checks the current signed target paths. macOS may reconnect a stopped transport on demand. |
+| P1 · Protected transport | Start, automatic recovery and reload enforce the same closed schema. DNS and the final route use the single VLESS/REALITY peer. Ordinary imports cannot add a proxy. Explicit CLI setup pins its two local ports and the configuration digest. The actual pinned HTTP/TLS inbound returned 407 without credentials and 200 with them, then carried data to a temporary local backend. The embedded Libbox accepted the native and CLI fixtures. |
+| P1 · Recovery | The provider saves a private snapshot per VPN profile after Libbox accepts the candidate. Failed startup, failed reload, failed disk commit, two profiles and an unowned legacy plist have separate tests. After upgrade the first successful explicit start seeds the snapshot used by GUI Start and On Demand. |
+| P1 · Distribution | The release bundle contains the versioned terminal tools. Packaging tests cover clean setup, migration from the documented build-12 layout, repeat setup and rollback. Registration and preference failure cases use test doubles. System extension approval, saving a profile and installation of a signed PKG still need a real deployment. |
+| P2 · Vendor updates | Rebinding the stable Claude CLI link checks the vendor signing requirement and reads back overlapping old and new exact rules before retiring the old path. Tests rotate a temporary signed executable and exercise stale saves and failed readback. |
+| P2 · Outage diagnosis | A curl timeout or reset through another endpoint is inconclusive. A qualifying failure includes the expected loopback port, TLS verification and CONNECT result. Fixtures cover wrong ports, certificate errors, authentication failures and upstream proxy failures. |
+| P2 · CLI-only selection | A fresh terminal setup can select just the vendor CLI. Existing saved selections survive migration. A previously selected missing Desktop or helper stops the operation. |
+
+**Requirements still awaiting system acceptance.** R01–R08 require packet
+captures from the installed candidate for CLI and Desktop, independent launch
+paths, protocol coverage, pre-existing sockets, reboot, sleep, network changes
+and competing VPNs. Spain-side loss with a reachable VPS remains a separate
+server-side test. R09–R11 have local update, rollback and narrow-loopback
+regressions. Runtime coverage on the installed candidate remains open.
+Under R12/R13, a matching binding and a connected transport do not establish
+traffic coverage. The Claude API diagnostic also accepts a generic connection error,
+so its individual result cannot establish the packet path. The current CLI
+credential store still uses private files.
+R16 (new independent executables in selected directories) failed earlier
+qualification and remains open. R14, R15 and R17 are later-stage scope.
+
+**Verification on arm64 macOS.** SwiftPM passed 41 tests. Python passed all
+25 CLI tests and all 15 build/distribution tests, including the macOS Seatbelt
+and SSH fixtures. Xcode compiled both production Release and the qualification
+variant from the pinned package graph with signing disabled. The production
+app's component and product PKG were built and expanded. Both package
+receipts report 1.14.4.13, the host and provider both report build 13, and the
+provider Mach service includes this build number. The extracted resources
+passed the shipping manifest check. The production executable routed the
+control flag and rejected the qualification-only flag. Strict SwiftLint,
+ShellCheck, plist/XML checks, Git whitespace checks and a redacted Gitleaks
+scan passed. The pinned core built with gVisor and the Darwin sing-tun race
+tests and go vet passed. The installed app still reports build 12.

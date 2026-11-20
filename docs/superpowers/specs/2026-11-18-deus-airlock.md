@@ -40,16 +40,27 @@ Start with signed macOS applications and their inherited helper scope using
 and `appRules`; verify that save/reload retains these on the target Mac.
 This public API is a candidate backend, not proof of runtime enforcement.
 
-The transport accepts one explicitly selected VLESS/REALITY server. Its
-configuration must not enable direct egress, automatic fallback, system
-proxy, inbound proxy listeners or externally writable control APIs. Secrets
-remain local. Filesystem/secrets isolation is a separate layer, not a claim
-made by network routing.
+The transport accepts one explicitly selected VLESS/REALITY peer. DNS uses
+that tunnel. Direct egress, automatic fallback, the system proxy and
+externally writable control APIs are forbidden. Ordinary protected profiles
+accept a TUN interface and no inbound proxy listeners.
 
-The current implementation prepares and inspects rules offline. The inherited
-SFM connection flow still creates an ordinary tunnel policy. The per-app
-binding, kill switch, strict config and installer have their own acceptance
-gates. Upstream app binaries and packages are not Airlock updates.
+The owner approved one exception on 20 November 2026 for the explicitly
+provisioned terminal CLI. Its launcher and descendants may reach one
+authenticated HTTPS CONNECT listener on the configured IPv4 loopback port.
+The signed provider checks the exact provisioned configuration, TLS credentials
+and ports against the binding in the per-app VPN preferences. Its encrypted
+VLESS connection uses a separate loopback TCP relay to the selected numeric
+VPS. SOCKS, mixed listeners, UDP listeners and proxying other applications
+are outside this exception. Ordinary imports, automatic restart and reload
+cannot grant the exception or change its binding. Secrets remain local.
+Filesystem isolation is a separate layer.
+
+Stopping the transport from the GUI preserves the persisted application rules
+and unconditional On Demand. The provider stores a successful start or reload
+under the VPN profile's ID. An unowned legacy snapshot cannot seed protected
+automatic startup. The installer and every new transport path retain their
+own acceptance gates. Upstream app binaries and packages are not Airlock updates.
 
 ## Acceptance gates
 

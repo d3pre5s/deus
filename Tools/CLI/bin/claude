@@ -7,6 +7,8 @@ import sys
 from urllib.parse import quote
 
 root = Path(__file__).resolve().parents[1]
+support = Path.home().resolve() / "Library/Application Support/Deus Airlock"
+agent = Path.home().resolve() / "Library/LaunchAgents/io.github.d3pre5s.deusairlock.cli-peer.plist"
 config = json.loads((root / "client.json").read_text())
 port = config["port"]
 if type(port) is not int or not 1 <= port <= 65535:
@@ -37,10 +39,15 @@ profile = f'''(version 1)
 (deny network*)
 (allow network-outbound (remote tcp "localhost:{port}"))
 (deny mach-lookup (global-name "com.apple.dnssd.service"))
-(deny file-write* (subpath (param "AIRLOCK_ROOT")))
+(deny file-write* (subpath (param "AIRLOCK_ROOT")) (subpath (param "AIRLOCK_SUPPORT"))
+                  (literal (param "AIRLOCK_AGENT")))
+(deny file-read* (subpath (param "AIRLOCK_RELEASES")))
+(allow file-read* (subpath (param "AIRLOCK_ROOT")))
 (deny file-read* (literal (param "AIRLOCK_PROVIDER")))
 '''
 os.execve("/usr/bin/sandbox-exec", [
     "sandbox-exec", "-D", f"AIRLOCK_ROOT={root}", "-D", f"AIRLOCK_PROVIDER={root / 'provider.json'}",
+    "-D", f"AIRLOCK_SUPPORT={support}", "-D", f"AIRLOCK_AGENT={agent}",
+    "-D", f"AIRLOCK_RELEASES={support / 'Terminal Releases'}",
     "-p", profile, str(vendor), *sys.argv[1:],
 ], env)

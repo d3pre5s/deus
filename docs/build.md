@@ -89,6 +89,32 @@ real server configurations in this public fork. Verify nested signatures,
 provisioning entitlements, timestamp/hardened runtime and notarization before
 distribution. Only then proceed to the separate live acceptance plan.
 
+### Terminal resources in the standalone distribution
+
+The SFM.System resource phase copies the CLI launcher, controller, relay,
+SSH helpers, setup command and their instructions into
+`Contents/Resources/AirlockCLI` before signing. Its `VERSION` records the
+app version and build number. Both distribution formats carry this app.
+Export and universal packaging verify the payload against the source
+allowlist and the exported Info.plist. The PKG receipt uses the app's
+short version followed by the build number, for example `1.14.4.13`.
+User credentials and provider configuration enter the process
+only when the macOS login user explicitly runs setup after installation.
+[Terminal setup and rollback](../Tools/CLI/README.md)
+
+Run the packaging smoke tests on macOS with the Command Line Tools installed.
+
+```sh
+/usr/bin/python3 -B -m unittest discover -s Tests/Build
+```
+
+The smoke tests execute the resource phase in a temporary directory and
+check zsh and SSH resolution, private input permissions, relay pinning and
+rollback. They also build and expand an unsigned fixture PKG and check
+its receipt, distribution version and executable files. LaunchAgent registration and the signed policy host use test
+doubles. Release qualification also requires the signed artifact and a
+clean macOS login with an approved Network Extension.
+
 ### Local qualification archive
 
 After building Libbox above, use the dedicated qualification entitlements and

@@ -10,5 +10,5 @@
     <choice id="default" title="sing-box">
         <pkg-ref id="io.github.d3pre5s.deusairlock.standalone"/>
     </choice>
-    <pkg-ref id="io.github.d3pre5s.deusairlock.standalone" version="0" onConclusion="none">component-universal.pkg</pkg-ref>
+    <pkg-ref id="io.github.d3pre5s.deusairlock.standalone" onConclusion="none">component-universal.pkg</pkg-ref>
 </installer-gui-script>

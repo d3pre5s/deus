@@ -1456,6 +1456,7 @@
 				3AEECC232A6DFA79006A0E0C /* Embed System Extensions */,
 				3AE595A92F08C5E200C13426 /* Copy Helpers */,
 				3AE595AC2F08C63000C13426 /* Generate LaunchDaemon */,
+				A17C11D22FEE000100000001 /* Bundle Terminal Resources */,
 			);
 			buildRules = (
 			);
@@ -1841,6 +1842,30 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -eu\n# Unsigned builds have no authoritative TeamIdentifierPrefix.\nif [ \"$CODE_SIGNING_ALLOWED\" = NO ]; then\n    exit 0\nfi\nexec /usr/bin/python3 \"$SCRIPT_INPUT_FILE_0\" --base \"$BASE_PACKAGE_IDENTIFIER\" --app-group \"$APP_GROUP_IDENTIFIER\" --output \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+		A17C11D22FEE000100000001 /* Bundle Terminal Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(PROJECT_FILE_PATH)/project.pbxproj",
+				"$(SRCROOT)/Tools/bundle-airlock-cli.sh",
+				"$(SRCROOT)/Tools/CLI/airlock-setup",
+				"$(SRCROOT)/Tools/CLI/bin/claude",
+				"$(SRCROOT)/Tools/CLI/bin/airlock-cli-start",
+				"$(SRCROOT)/Tools/CLI/helpers/ssh",
+				"$(SRCROOT)/Tools/CLI/peer-relay",
+				"$(SRCROOT)/Tools/CLI/ssh-connect",
+				"$(SRCROOT)/Tools/CLI/ssh_config.airlock",
+				"$(SRCROOT)/Tools/CLI/README.md",
+			);
+			name = "Bundle Terminal Resources";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AirlockCLI",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/bash \"$SRCROOT/Tools/bundle-airlock-cli.sh\" build \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/AirlockCLI\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -2972,7 +2997,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_PACKAGE_IDENTIFIER = io.github.d3pre5s.deusairlock;
 				DEUS_URL_SCHEME = "deus-airlock";
-				DEUS_AIRLOCK_BUILD = 12;
+				DEUS_AIRLOCK_BUILD = 13;
 				DEUS_AIRLOCK_VERSION = 1.14.4;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -3045,7 +3070,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_PACKAGE_IDENTIFIER = io.github.d3pre5s.deusairlock;
 				DEUS_URL_SCHEME = "deus-airlock";
-				DEUS_AIRLOCK_BUILD = 12;
+				DEUS_AIRLOCK_BUILD = 13;
 				DEUS_AIRLOCK_VERSION = 1.14.4;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
