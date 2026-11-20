@@ -297,3 +297,27 @@ reported the VPN connected while the relay port was unavailable.
 These results cover the terminal launch path and the probes above. DNS
 and interface-level leakage still need packet evidence. Claude Desktop and
 independent executables have separate acceptance cases.
+
+### DNS capture and independent directory launches on build 13, 2026-11-20
+
+A bounded `pktap,all` capture sampled DNS port 53 before, during and after
+a six-second loss of the local relay. Only lines matching the generated
+test names were retained. Tcpdump processed 200 packets with zero kernel
+drops. All 10 matching records were control DNS on `en0`. Each phase had
+both a system-resolver control and an IPv4 UDP control. The Claude Code
+Setup hook produced no matching records on any captured interface. Its
+direct UDP and TCP DNS probes returned permission errors for both IP
+families in each phase.
+
+Outside TCP DNS and IPv6 DNS controls received no reply, so packet coverage
+for those paths is inconclusive. The capture covers classic DNS on port 53.
+ProxyBridge was active and appeared in control-packet metadata, so this
+run does not establish behavior without that extension. The relay and VPN
+recovered, and the signed host read back the same three exact per-app rules
+and unconditional On Demand.
+
+R16 remains open. A newly compiled fixture started independently from
+each of the two Claude version roots connected to the loopback control
+port. Each copy also reached the port through its child and through exec
+replacement. The outside control worked. These are local canary results.
+No filter was installed or reconfigured during the directory test.
