@@ -209,3 +209,24 @@ control flag and rejected the qualification-only flag. Strict SwiftLint,
 ShellCheck, plist/XML checks, Git whitespace checks and a redacted Gitleaks
 scan passed. The pinned core built with gVisor and the Darwin sing-tun race
 tests and go vet passed. The installed app still reports build 12.
+
+### Developer ID candidate, 2026-11-20
+
+The arm64 production archive for 1.14.4 (13) was built from
+`1ff171a56982626abaac346191aa8511a71048c9`. The macOS toolbar now enables
+Stop and Start when Airlock has a bound per-app profile and the ordinary SFM
+profile library is empty. The four combinations of product and library state
+passed the toolbar check. The final revision passed 41 Swift, 25 CLI and
+15 distribution tests.
+
+The app and system extension passed strict Developer ID signature,
+entitlement and provisioning checks. The production executable rejected the
+qualification-only command, and the bundled terminal tools matched the
+shipping manifest. A locally saved ZIP was extracted and checked again.
+Both code signature hashes matched the signed archive.
+Its SHA-256 is `f1c99bd2bfacf24fc8b4e5f23b92c8384c96aa955ab6cc35b902cf58e6e9c457`.
+
+At this checkpoint the Mac was running build 12. Its signed, notarized
+rollback copy was verified before deployment. The Apple submission was held
+for confirmation. The live GUI Stop/Start and the server-side Spain outage
+had no build-13 result at this point.
