@@ -28,7 +28,7 @@ public struct StartStopButton: View {
                 .disabled(true)
             }
         }
-        .disabled(environments.emptyProfiles)
+        .disabled(environments.emptyProfiles && !AppConfiguration.isAirlock)
     }
 
     private struct ToggleConnectionButton: View {
