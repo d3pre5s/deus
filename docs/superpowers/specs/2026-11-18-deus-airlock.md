@@ -89,3 +89,11 @@ firewall and additional per-app routing rules. A macOS content filter is a
 candidate for independent blocks such as Photoshop. Qualify it alongside
 the tunnel and inventory existing app rules before migrating them.
 [Apple deployment requirements](https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment)
+
+### Candidate for discussion: preview an application rule
+
+Start with the existing [policy inspector](../../../Tools/PolicyInspector/main.swift), which already identifies signed executables. Given an application and sample connection, show which proposed rule matches, its source, and its predicted action. ProxyBridge's ordered rules make precedence visible. LuLu's application and destination rules make the scope of an outbound decision visible. [ProxyBridge rules](https://proxybridge.interceptsuite.com/docs/macos-rules/) · [LuLu documentation](https://objective-see.org/products/lulu.html)
+
+A first prototype could use offline fixtures for an application, a signed helper, and an unknown executable. Compare an application-wide rule with a destination-specific one, show which rule takes precedence, and flag unsupported matches explicitly. Label the output as a preview. For protected Claude identities, reject a proposed direct fallback. Opening a preview must leave the active VPN policy untouched.
+
+Later candidates include previewing a ProxyBridge rule export for migration and a LuLu-style outbound block for a single signed application. Enabling a block would need a separate acceptance test with the selected app, its helpers, and an unrelated control.

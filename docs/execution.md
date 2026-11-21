@@ -321,3 +321,13 @@ each of the two Claude version roots connected to the loopback control
 port. Each copy also reached the port through its child and through exec
 replacement. The outside control worked. These are local canary results.
 No filter was installed or reconfigured during the directory test.
+
+### Provider process loss and CLI with the GUI closed, 2026-11-21
+
+On installed build 13, the provider process was terminated while a terminal launcher child held an SSH stream. The stream reached EOF in about 0.02 seconds. All 48 fresh HTTPS attempts during the outage failed to connect. An independent Mac process retained ordinary internet access. A physical-interface capture saw the outside control before and after the test window and zero direct IPv4 TCP SYNs to the HTTPS probe address inside it. Its kernel drop count was unavailable, so loss-free packet coverage remains open.
+
+The runner invoked the normal start command at 19.16 seconds. A replacement provider appeared and the first response from the expected Spanish home address arrived at 23.53 seconds. The next two probes confirmed the address. Automatic recovery beyond 19 seconds remains unmeasured.
+
+In a separate run with the GUI already closed and the provider already connected, a fresh Claude Code terminal Setup hook used the loopback CONNECT proxy and reached the expected home exit. The outside control had a distinct address. The provider PID stayed the same. Cold boot and the transition when quitting the GUI are separate cases.
+
+The [R16 probe](../Tests/R16/README.md) built and launched a harmless executable in both private roots, including a nested directory, and in the outside control. The signed-client enforcement and post-stop phases await an authorized Endpoint Security profile.
